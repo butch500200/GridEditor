@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Endfield Factory Planner - Global Styles
+ *
+ * Custom styles and utility classes for the factory planner application.
+ * Uses the Endfield color theme: yellow (#F5C518), black, and off-white.
+ */
+
+@layer base {
+  /* Import Google Fonts */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  html {
+    @apply bg-endfield-black text-endfield-off-white;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply m-0 p-0 overflow-hidden;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-endfield-dark-gray;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-endfield-light-gray rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-endfield-muted;
+  }
+}
+
+@layer components {
+  /* Panel styling for consistent look */
+  .panel {
+    @apply bg-endfield-dark-gray border-r border-endfield-mid-gray;
+  }
+
+  .panel-header {
+    @apply px-4 py-3 border-b border-endfield-mid-gray font-semibold text-endfield-yellow uppercase tracking-wider text-sm;
+  }
+
+  /* Button variants */
+  .btn-primary {
+    @apply bg-endfield-yellow text-endfield-black font-medium px-4 py-2 rounded
+           hover:bg-endfield-yellow-light transition-colors duration-200
+           active:bg-endfield-yellow-dark;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent border border-endfield-mid-gray text-endfield-off-white
+           px-4 py-2 rounded hover:border-endfield-yellow hover:text-endfield-yellow
+           transition-colors duration-200;
+  }
+
+  /* Machine card in sidebar */
+  .machine-card {
+    @apply bg-endfield-mid-gray p-3 rounded cursor-pointer
+           border-2 border-transparent hover:border-endfield-yellow
+           transition-all duration-200;
+  }
+
+  .machine-card.selected {
+    @apply border-endfield-yellow shadow-glow-sm;
+  }
+
+  /* Grid cell styling */
+  .grid-cell {
+    @apply border border-endfield-mid-gray/50;
+  }
+
+  .grid-cell:hover {
+    @apply bg-endfield-light-gray/30;
+  }
+}
+
+@layer utilities {
+  /* No-select utility for drag operations */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Smooth transitions for interactive elements */
+  .transition-smooth {
+    @apply transition-all duration-200 ease-in-out;
+  }
+}
