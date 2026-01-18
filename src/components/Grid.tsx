@@ -45,7 +45,7 @@ const getPortIndicatorStyle = (
   cellSize: number,
   rotation: Rotation
 ): React.CSSProperties => {
-  const lineLength = Math.min(cellSize * .8);
+  const lineLength = cellSize * .6;
   const lineThickness = 4;
 
   // Calculate the rotated direction based on machine rotation
@@ -695,6 +695,9 @@ export const Grid: React.FC = () => {
       if (e.key === 'r' || e.key === 'R') {
         if (selectedMachineDefId && currentTool === 'place') {
           setGhostRotation((prev) => ((prev + 90) % 360) as Rotation);
+        }
+        else if ( isDraggingRef.current ){
+
         }
       }
 
