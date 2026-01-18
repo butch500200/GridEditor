@@ -45,8 +45,8 @@ const getPortIndicatorStyle = (
   cellSize: number,
   rotation: Rotation
 ): React.CSSProperties => {
-  const lineLength = Math.min(cellSize * 0.4, 16);
-  const lineThickness = 3;
+  const lineLength = Math.min(cellSize * .8);
+  const lineThickness = 4;
 
   // Calculate the rotated direction based on machine rotation
   const directions: Array<'N' | 'E' | 'S' | 'W'> = ['N', 'E', 'S', 'W'];
@@ -86,37 +86,37 @@ const getPortIndicatorStyle = (
     case 'N': // Top edge
       style = {
         ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: cellCenterX - lineThickness / 2,
+        width: lineLength,
+        height: lineThickness,
+        left: cellCenterX - lineLength / 2,
         top: 0,
       };
       break;
     case 'E': // Right edge
       style = {
         ...style,
-        width: lineLength,
-        height: lineThickness,
+        width: lineThickness,
+        height: lineLength,
         right: 0,
-        top: cellCenterY - lineThickness / 2,
+        top: cellCenterY - lineLength / 2,
       };
       break;
     case 'S': // Bottom edge
       style = {
         ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: cellCenterX - lineThickness / 2,
+        width: lineLength,
+        height: lineThickness,
+        left: cellCenterX - lineLength / 2,
         bottom: 0,
       };
       break;
     case 'W': // Left edge
       style = {
         ...style,
-        width: lineLength,
-        height: lineThickness,
+        width: lineThickness,
+        height: lineLength,
         left: 0,
-        top: cellCenterY - lineThickness / 2,
+        top: cellCenterY - lineLength / 2,
       };
       break;
   }

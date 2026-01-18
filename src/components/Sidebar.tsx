@@ -50,7 +50,7 @@ const getSidebarPortIndicatorStyle = (
 ): React.CSSProperties => {
   // Scale the line dimensions for sidebar preview
   const cellSizeInPreview = 20 * scale;
-  const lineLength = Math.max(4, Math.min(cellSizeInPreview * 0.35, 8));
+  const lineLength = cellSizeInPreview * .8;
   const lineThickness = 2;
 
   // Calculate cell center position in preview coordinates
@@ -69,37 +69,37 @@ const getSidebarPortIndicatorStyle = (
     case 'N': // Top edge
       style = {
         ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: cellCenterX - lineThickness / 2,
+        width: lineLength,
+        height: lineThickness,
+        left: cellCenterX - lineLength / 2,
         top: 0,
       };
       break;
     case 'E': // Right edge
       style = {
         ...style,
-        width: lineLength,
-        height: lineThickness,
+        width: lineThickness,
+        height: lineLength,
         right: 0,
-        top: cellCenterY - lineThickness / 2,
+        top: cellCenterY - lineLength / 2,
       };
       break;
     case 'S': // Bottom edge
       style = {
         ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: cellCenterX - lineThickness / 2,
+        width: lineLength,
+        height: lineThickness,
+        left: cellCenterX - lineLength / 2,
         bottom: 0,
       };
       break;
     case 'W': // Left edge
       style = {
         ...style,
-        width: lineLength,
-        height: lineThickness,
+        width: lineThickness,
+        height: lineLength,
         left: 0,
-        top: cellCenterY - lineThickness / 2,
+        top: cellCenterY - lineLength / 2,
       };
       break;
   }
