@@ -9,7 +9,8 @@
 import React from 'react';
 import { Info, Cog, ArrowRight, ArrowLeft, Clock, RotateCw, Trash2 } from 'lucide-react';
 import { useStore, useSelectedGridItem } from '../store/useStore';
-import type { GridItem, MachineDef, Recipe, Direction } from '../types';
+import { getDirectionLabel } from '../utils/gridUtils';
+import type { GridItem, MachineDef, Recipe } from '../types';
 
 /**
  * @description Props for the PropertyRow component
@@ -31,19 +32,6 @@ const PropertyRow: React.FC<PropertyRowProps> = ({ label, value }) => {
       <span className="text-endfield-off-white text-sm font-medium">{value}</span>
     </div>
   );
-};
-
-/**
- * @description Convert direction to readable string
- */
-const directionLabel = (dir: Direction): string => {
-  const labels: Record<Direction, string> = {
-    N: 'North',
-    E: 'East',
-    S: 'South',
-    W: 'West',
-  };
-  return labels[dir];
 };
 
 /**
@@ -151,7 +139,7 @@ const MachineDetails: React.FC<MachineDetailsProps> = ({
               {port.type}
             </span>
             <span className="text-endfield-muted text-sm">
-              ({port.offsetX}, {port.offsetY}) - {directionLabel(port.direction)}
+              ({port.offsetX}, {port.offsetY}) - {getDirectionLabel(port.direction)}
             </span>
           </div>
         ))}

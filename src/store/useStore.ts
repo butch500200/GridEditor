@@ -10,6 +10,9 @@
  */
 
 import { create } from 'zustand';
+import { GRID_CONFIG } from '../constants';
+import { generateId } from '../utils/idUtils';
+import { getEffectiveDimensions } from '../utils/gridUtils';
 import type {
   MachineDef,
   Recipe,
@@ -20,18 +23,6 @@ import type {
   BoundingBox,
   DragMoveState,
 } from '../types';
-
-/**
- * Grid configuration constants
- */
-export const GRID_CONFIG = {
-  /** Width of the grid in cells */
-  WIDTH: 50,
-  /** Height of the grid in cells */
-  HEIGHT: 50,
-  /** Size of each cell in pixels */
-  CELL_SIZE: 40,
-} as const;
 
 /**
  * @description Modal types for the application
@@ -146,24 +137,6 @@ interface FactoryState {
   cancelDragMove: () => void;
 }
 
-/**
- * Generate a unique ID for new grid items
- */
-const generateId = (): string => {
-  return `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-};
-
-/**
- * @description Main Zustand store for the factory planner
- *
- * @example
- * // In a component
- * const { machineDefs, placeGridItem } = useStore();
- *
- * @example
- * // Selecting state with selector for performance
- * const gridItems = useStore((state) => state.gridItems);
- */
 export const useStore = create<FactoryState>((set, get) => ({
   // Initial Data
   machineDefs: [],
@@ -247,7 +220,7 @@ export const useStore = create<FactoryState>((set, get) => ({
 
   // Grid Item Actions
   placeGridItem: (item) => {
-    const id = generateId();
+    const id = generateId('item');
     const newItem: GridItem = { ...item, id };
 
     set((state) => ({
@@ -279,9 +252,11 @@ export const useStore = create<FactoryState>((set, get) => ({
     if (!machineDef) return null;
 
     // Calculate effective dimensions based on rotation
-    const isRotated = rotation === 90 || rotation === 270;
-    const effectiveWidth = isRotated ? machineDef.height : machineDef.width;
-    const effectiveHeight = isRotated ? machineDef.width : machineDef.height;
+    const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
+      machineDef.width,
+      machineDef.height,
+      rotation
+    );
 
     return {
       minX: x,

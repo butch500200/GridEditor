@@ -9,40 +9,9 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { X, Plus, Minus } from 'lucide-react';
 import { useStore, useEditingMachineId } from '../store/useStore';
+import { PORT_COLORS, MACHINE_COLORS as DEFAULT_COLORS } from '../constants';
+import { generateId } from '../utils/idUtils';
 import type { MachineDef, MachinePort, Direction, PortType } from '../types';
-
-/**
- * Port indicator colors matching the grid and sidebar
- */
-const PORT_COLORS = {
-  input: '#22C55E',
-  output: '#3B82F6',
-} as const;
-
-/**
- * Default colors available for machine selection
- */
-const DEFAULT_COLORS = [
-  '#5D9CEC', // Blue
-  '#FC6E51', // Orange
-  '#48CFAD', // Teal
-  '#A0D468', // Green
-  '#AC92EC', // Purple
-  '#967ADC', // Violet
-  '#37BC9B', // Emerald
-  '#3BAFDA', // Cyan
-  '#656D78', // Gray
-  '#F5C518', // Yellow (Endfield)
-  '#ED5565', // Red
-  '#FFCE54', // Gold
-] as const;
-
-/**
- * Generate a unique ID for new machine definitions
- */
-const generateMachineId = (): string => {
-  return `machine-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-};
 
 /**
  * @description Props for the PortPlacer mini-grid preview component
@@ -420,7 +389,7 @@ export const MachineBuilder: React.FC<MachineBuilderProps> = ({ onClose }) => {
       updateMachineDef(editingMachineId, machineData);
     } else {
       const newMachine: MachineDef = {
-        id: generateMachineId(),
+        id: generateId('machine'),
         ...machineData,
       };
       addMachineDef(newMachine);

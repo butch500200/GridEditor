@@ -16,158 +16,11 @@ import {
   useGridItems,
   useGhostPlacement,
   useDragMoveState,
-  GRID_CONFIG,
 } from '../store/useStore';
-import type { GridItem, MachineDef, Rotation, GhostPlacement, MachinePort, DragMoveState } from '../types';
-
-/**
- * Port indicator colors
- */
-const PORT_COLORS = {
-  input: '#22C55E', // Green for inputs
-  output: '#3B82F6', // Blue for outputs
-} as const;
-
-/**
- * @description Calculates the visual position of a port indicator line
- *
- * @param port - The port definition
- * @param machineWidth - Width of the machine in cells
- * @param machineHeight - Height of the machine in cells
- * @param cellSize - Size of each cell in pixels
- * @param rotation - Machine rotation in degrees
- * @returns Style object for positioning the port indicator
- */
-const getPortIndicatorStyle = (
-  port: MachinePort,
-  machineWidth: number,
-  machineHeight: number,
-  cellSize: number,
-  rotation: Rotation
-): React.CSSProperties => {
-  const lineLength = cellSize * .6;
-  const lineThickness = 4;
-
-  // Calculate the rotated direction based on machine rotation
-  const directions: Array<'N' | 'E' | 'S' | 'W'> = ['N', 'E', 'S', 'W'];
-  const rotationSteps = rotation / 90;
-  const originalIndex = directions.indexOf(port.direction);
-  const rotatedIndex = (originalIndex + rotationSteps) % 4;
-  const effectiveDirection = directions[rotatedIndex];
-
-  // Calculate rotated port position within the machine
-  let effectiveOffsetX = port.offsetX;
-  let effectiveOffsetY = port.offsetY;
-
-  if (rotation === 90) {
-    effectiveOffsetX = machineHeight - 1 - port.offsetY;
-    effectiveOffsetY = port.offsetX;
-  } else if (rotation === 180) {
-    effectiveOffsetX = machineWidth - 1 - port.offsetX;
-    effectiveOffsetY = machineHeight - 1 - port.offsetY;
-  } else if (rotation === 270) {
-    effectiveOffsetX = port.offsetY;
-    effectiveOffsetY = machineWidth - 1 - port.offsetX;
-  }
-
-  // Base position at the center of the cell
-  const cellCenterX = effectiveOffsetX * cellSize + cellSize / 2;
-  const cellCenterY = effectiveOffsetY * cellSize + cellSize / 2;
-
-  let style: React.CSSProperties = {
-    position: 'absolute',
-    backgroundColor: PORT_COLORS[port.type],
-    borderRadius: '1px',
-    zIndex: 10,
-  };
-
-  // Position based on direction (port faces outward from this edge)
-  switch (effectiveDirection) {
-    case 'N': // Top edge
-      style = {
-        ...style,
-        width: lineLength,
-        height: lineThickness,
-        left: cellCenterX - lineLength / 2,
-        top: 0,
-      };
-      break;
-    case 'E': // Right edge
-      style = {
-        ...style,
-        width: lineThickness,
-        height: lineLength,
-        right: 0,
-        top: cellCenterY - lineLength / 2,
-      };
-      break;
-    case 'S': // Bottom edge
-      style = {
-        ...style,
-        width: lineLength,
-        height: lineThickness,
-        left: cellCenterX - lineLength / 2,
-        bottom: 0,
-      };
-      break;
-    case 'W': // Left edge
-      style = {
-        ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: 0,
-        top: cellCenterY - lineLength / 2,
-      };
-      break;
-  }
-
-  return style;
-};
-
-/**
- * @description Props for the PortIndicators component
- */
-interface PortIndicatorsProps {
-  /** Array of ports to render */
-  ports: MachinePort[];
-  /** Machine width in cells */
-  machineWidth: number;
-  /** Machine height in cells */
-  machineHeight: number;
-  /** Cell size in pixels */
-  cellSize: number;
-  /** Machine rotation */
-  rotation: Rotation;
-}
-
-/**
- * @description Renders port indicator lines on a machine
- *
- * Input ports are shown in green, output ports in blue.
- * Lines appear on the edge of the machine based on port direction.
- *
- * @param props - Component props
- * @returns Rendered port indicators
- */
-const PortIndicators: React.FC<PortIndicatorsProps> = ({
-  ports,
-  machineWidth,
-  machineHeight,
-  cellSize,
-  rotation,
-}) => {
-  return (
-    <>
-      {ports.map((port, index) => (
-        <div
-          key={`port-${index}-${port.type}-${port.direction}`}
-          style={getPortIndicatorStyle(port, machineWidth, machineHeight, cellSize, rotation)}
-          title={`${port.type === 'input' ? 'Input' : 'Output'} port`}
-        />
-      ))}
-    </>
-  );
-};
+import { GRID_CONFIG } from '../constants';
+import { getEffectiveDimensions } from '../utils/gridUtils';
+import { PortIndicators } from './PortIndicators';
+import type { GridItem, MachineDef, Rotation, GhostPlacement, DragMoveState } from '../types';
 
 /**
  * @description Props for rendering a placed machine
@@ -205,9 +58,11 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
   onMouseDown,
 }) => {
   // Calculate effective dimensions based on rotation
-  const isRotated = item.rotation === 90 || item.rotation === 270;
-  const effectiveWidth = isRotated ? machineDef.height : machineDef.width;
-  const effectiveHeight = isRotated ? machineDef.width : machineDef.height;
+  const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
+    machineDef.width,
+    machineDef.height,
+    item.rotation
+  );
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -296,9 +151,11 @@ const GhostPreview: React.FC<GhostPreviewProps> = ({
   cellSize,
 }) => {
   // Calculate effective dimensions based on rotation
-  const isRotated = ghost.rotation === 90 || ghost.rotation === 270;
-  const effectiveWidth = isRotated ? machineDef.height : machineDef.width;
-  const effectiveHeight = isRotated ? machineDef.width : machineDef.height;
+  const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
+    machineDef.width,
+    machineDef.height,
+    ghost.rotation
+  );
 
   const baseColor = ghost.isValid ? 'rgba(72, 207, 173, 0.6)' : 'rgba(255, 100, 100, 0.6)';
   const borderColor = ghost.isValid ? '#48CFAD' : '#FF6464';
@@ -359,9 +216,11 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
   cellSize,
 }) => {
   // Calculate effective dimensions based on rotation
-  const isRotated = dragState.currentRotation === 90 || dragState.currentRotation === 270;
-  const effectiveWidth = isRotated ? machineDef.height : machineDef.width;
-  const effectiveHeight = isRotated ? machineDef.width : machineDef.height;
+  const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
+    machineDef.width,
+    machineDef.height,
+    dragState.currentRotation
+  );
 
   const baseColor = dragState.isValid ? 'rgba(72, 207, 173, 0.7)' : 'rgba(255, 100, 100, 0.7)';
   const borderColor = dragState.isValid ? '#48CFAD' : '#FF6464';

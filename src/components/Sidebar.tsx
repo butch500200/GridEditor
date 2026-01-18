@@ -19,148 +19,9 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useStore, useMachineDefs, useCurrentTool, useRecipes } from '../store/useStore';
-import type { MachineDef, MachinePort, ToolType, Recipe } from '../types';
-
-/**
- * Port indicator colors (matching Grid.tsx)
- */
-const PORT_COLORS = {
-  input: '#22C55E', // Green for inputs
-  output: '#3B82F6', // Blue for outputs
-} as const;
-
-/**
- * @description Calculates the visual position of a port indicator line for sidebar preview
- *
- * @param port - The port definition
- * @param machineWidth - Width of the machine in cells
- * @param machineHeight - Height of the machine in cells
- * @param previewWidth - Width of the preview box in pixels
- * @param previewHeight - Height of the preview box in pixels
- * @param scale - Scale factor from machine cells to preview pixels
- * @returns Style object for positioning the port indicator
- */
-const getSidebarPortIndicatorStyle = (
-  port: MachinePort,
-  _machineWidth: number,
-  _machineHeight: number,
-  _previewWidth: number,
-  _previewHeight: number,
-  scale: number
-): React.CSSProperties => {
-  // Scale the line dimensions for sidebar preview
-  const cellSizeInPreview = 20 * scale;
-  const lineLength = cellSizeInPreview * .8;
-  const lineThickness = 2;
-
-  // Calculate cell center position in preview coordinates
-  const cellCenterX = port.offsetX * cellSizeInPreview + cellSizeInPreview / 2;
-  const cellCenterY = port.offsetY * cellSizeInPreview + cellSizeInPreview / 2;
-
-  let style: React.CSSProperties = {
-    position: 'absolute',
-    backgroundColor: PORT_COLORS[port.type],
-    borderRadius: '1px',
-    zIndex: 10,
-  };
-
-  // Position based on direction (port faces outward from this edge)
-  switch (port.direction) {
-    case 'N': // Top edge
-      style = {
-        ...style,
-        width: lineLength,
-        height: lineThickness,
-        left: cellCenterX - lineLength / 2,
-        top: 0,
-      };
-      break;
-    case 'E': // Right edge
-      style = {
-        ...style,
-        width: lineThickness,
-        height: lineLength,
-        right: 0,
-        top: cellCenterY - lineLength / 2,
-      };
-      break;
-    case 'S': // Bottom edge
-      style = {
-        ...style,
-        width: lineLength,
-        height: lineThickness,
-        left: cellCenterX - lineLength / 2,
-        bottom: 0,
-      };
-      break;
-    case 'W': // Left edge
-      style = {
-        ...style,
-        width: lineThickness,
-        height: lineLength,
-        left: 0,
-        top: cellCenterY - lineLength / 2,
-      };
-      break;
-  }
-
-  return style;
-};
-
-/**
- * @description Props for the SidebarPortIndicators component
- */
-interface SidebarPortIndicatorsProps {
-  /** Array of ports to render */
-  ports: MachinePort[];
-  /** Machine width in cells */
-  machineWidth: number;
-  /** Machine height in cells */
-  machineHeight: number;
-  /** Preview width in pixels */
-  previewWidth: number;
-  /** Preview height in pixels */
-  previewHeight: number;
-  /** Scale factor */
-  scale: number;
-}
-
-/**
- * @description Renders port indicator lines on a sidebar machine preview
- *
- * Input ports are shown in green, output ports in blue.
- * Lines appear on the edge of the preview based on port direction.
- *
- * @param props - Component props
- * @returns Rendered port indicators
- */
-const SidebarPortIndicators: React.FC<SidebarPortIndicatorsProps> = ({
-  ports,
-  machineWidth,
-  machineHeight,
-  previewWidth,
-  previewHeight,
-  scale,
-}) => {
-  return (
-    <>
-      {ports.map((port, index) => (
-        <div
-          key={`sidebar-port-${index}-${port.type}-${port.direction}`}
-          style={getSidebarPortIndicatorStyle(
-            port,
-            machineWidth,
-            machineHeight,
-            previewWidth,
-            previewHeight,
-            scale
-          )}
-          title={`${port.type === 'input' ? 'Input' : 'Output'} port (${port.direction})`}
-        />
-      ))}
-    </>
-  );
-};
+import { PORT_COLORS } from '../constants';
+import { PortIndicators } from './PortIndicators';
+import type { MachineDef, ToolType, Recipe } from '../types';
 
 /**
  * @description Props for the MachineCard component
@@ -199,13 +60,22 @@ const MachineCard: React.FC<MachineCardProps> = ({
   );
   const previewWidth = machine.width * 20 * scale;
   const previewHeight = machine.height * 20 * scale;
+  const cellSizeInPreview = 20 * scale;
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className={`machine-card w-full text-left ${isSelected ? 'selected' : ''}`}
+      className={`machine-card w-full text-left cursor-pointer ${isSelected ? 'selected' : ''}`}
+      role="button"
+      tabIndex={0}
       aria-pressed={isSelected}
       aria-label={`Select ${machine.name} (${machine.width}x${machine.height})`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className="flex items-center gap-3">
         {/* Machine preview */}
@@ -227,13 +97,12 @@ const MachineCard: React.FC<MachineCardProps> = ({
             }}
           >
             {/* Port indicators on preview */}
-            <SidebarPortIndicators
+            <PortIndicators
               ports={machine.ports}
               machineWidth={machine.width}
               machineHeight={machine.height}
-              previewWidth={previewWidth}
-              previewHeight={previewHeight}
-              scale={scale}
+              cellSize={cellSizeInPreview}
+              showTooltips={false}
             />
           </div>
         </div>
@@ -270,7 +139,7 @@ const MachineCard: React.FC<MachineCardProps> = ({
           </p>
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 

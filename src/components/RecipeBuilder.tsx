@@ -13,14 +13,8 @@ import {
   useMachineDefs,
   useEditingRecipeId,
 } from '../store/useStore';
+import { generateId } from '../utils/idUtils';
 import type { Recipe, RecipeIO } from '../types';
-
-/**
- * Generate a unique ID for new recipes
- */
-const generateRecipeId = (): string => {
-  return `recipe-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-};
 
 /**
  * @description Props for the IOList component
@@ -261,7 +255,7 @@ export const RecipeBuilder: React.FC<RecipeBuilderProps> = ({ onClose }) => {
       updateRecipe(editingRecipeId, recipeData);
     } else {
       const newRecipe: Recipe = {
-        id: generateRecipeId(),
+        id: generateId('recipe'),
         ...recipeData,
       };
       addRecipe(newRecipe);
