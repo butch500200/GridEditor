@@ -200,5 +200,6 @@ export interface DragMoveState {
   originalRotation: Rotation;
   currentX: number;
   currentY: number;
+  currentRotation: Rotation;
   isValid: boolean;
 }

@@ -228,14 +228,6 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  // Adjust position for rotation to keep top-left corner in place
-  if (item.rotation === 90 || item.rotation === 270) {
-    const offsetX = (machineDef.height - machineDef.width) * cellSize / 2;
-    const offsetY = (machineDef.width - machineDef.height) * cellSize / 2;
-    style.left = item.x * cellSize - offsetX;
-    style.top = item.y * cellSize - offsetY;
-  }
-
   return (
     <div
       style={style}
@@ -324,14 +316,6 @@ const GhostPreview: React.FC<GhostPreviewProps> = ({
     zIndex: 100,
   };
 
-  // Adjust position for rotation
-  if (ghost.rotation === 90 || ghost.rotation === 270) {
-    const offsetX = (machineDef.height - machineDef.width) * cellSize / 2;
-    const offsetY = (machineDef.width - machineDef.height) * cellSize / 2;
-    style.left = ghost.x * cellSize - offsetX;
-    style.top = ghost.y * cellSize - offsetY;
-  }
-
   return (
     <div style={style} className="flex items-center justify-center">
       {/* Port indicators on ghost */}
@@ -375,7 +359,7 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
   cellSize,
 }) => {
   // Calculate effective dimensions based on rotation
-  const isRotated = dragState.originalRotation === 90 || dragState.originalRotation === 270;
+  const isRotated = dragState.currentRotation === 90 || dragState.currentRotation === 270;
   const effectiveWidth = isRotated ? machineDef.height : machineDef.width;
   const effectiveHeight = isRotated ? machineDef.width : machineDef.height;
 
@@ -395,14 +379,6 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
     zIndex: 100,
   };
 
-  // Adjust position for rotation
-  if (dragState.originalRotation === 90 || dragState.originalRotation === 270) {
-    const offsetX = (machineDef.height - machineDef.width) * cellSize / 2;
-    const offsetY = (machineDef.width - machineDef.height) * cellSize / 2;
-    style.left = dragState.currentX * cellSize - offsetX;
-    style.top = dragState.currentY * cellSize - offsetY;
-  }
-
   return (
     <div style={style} className="flex items-center justify-center">
       {/* Port indicators on drag ghost */}
@@ -411,7 +387,7 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
         machineWidth={machineDef.width}
         machineHeight={machineDef.height}
         cellSize={cellSize}
-        rotation={dragState.originalRotation}
+        rotation={dragState.currentRotation}
       />
       <span className="text-white/80 text-xs font-medium">
         {machineDef.name}
@@ -453,6 +429,7 @@ export const Grid: React.FC = () => {
   const clearSelection = useStore((state) => state.clearSelection);
   const startDragMove = useStore((state) => state.startDragMove);
   const updateDragMove = useStore((state) => state.updateDragMove);
+  const rotateDragMove = useStore((state) => state.rotateDragMove);
   const completeDragMove = useStore((state) => state.completeDragMove);
   const cancelDragMove = useStore((state) => state.cancelDragMove);
 
@@ -697,7 +674,7 @@ export const Grid: React.FC = () => {
           setGhostRotation((prev) => ((prev + 90) % 360) as Rotation);
         }
         else if ( isDraggingRef.current ){
-
+          rotateDragMove();
         }
       }
 
@@ -716,7 +693,7 @@ export const Grid: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedMachineDefId, currentTool, clearSelection, dragMoveState, cancelDragMove]);
+  }, [selectedMachineDefId, currentTool, clearSelection, dragMoveState, cancelDragMove, rotateDragMove]);
 
   /**
    * Handle global mouse up for drag completion

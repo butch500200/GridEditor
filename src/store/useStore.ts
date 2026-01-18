@@ -138,6 +138,8 @@ interface FactoryState {
   startDragMove: (gridItemId: string) => void;
   /** Update the drag position while moving */
   updateDragMove: (x: number, y: number) => void;
+  /** Rotate the machine being dragged */
+  rotateDragMove: () => void;
   /** Complete the drag move, placing at new position if valid */
   completeDragMove: () => void;
   /** Cancel the drag move, returning to original position */
@@ -412,6 +414,7 @@ export const useStore = create<FactoryState>((set, get) => ({
         originalRotation: gridItem.rotation,
         currentX: gridItem.x,
         currentY: gridItem.y,
+        currentRotation: gridItem.rotation,
         isValid: true, // Starting position is always valid
       },
       selectedGridItemId: null, // Clear selection while dragging
@@ -427,7 +430,7 @@ export const useStore = create<FactoryState>((set, get) => ({
       state.dragMoveState.machineDefId,
       x,
       y,
-      state.dragMoveState.originalRotation,
+      state.dragMoveState.currentRotation,
       state.dragMoveState.gridItemId // Exclude the item being moved from collision checks
     );
 
@@ -436,6 +439,28 @@ export const useStore = create<FactoryState>((set, get) => ({
         ...state.dragMoveState,
         currentX: x,
         currentY: y,
+        isValid,
+      },
+    });
+  },
+  
+  rotateDragMove: () => {
+    const state = get();
+    if (!state.dragMoveState) return;
+
+    const newRotation = ((state.dragMoveState.currentRotation + 90) % 360) as Rotation;
+    const isValid = state.isPlacementValid(
+      state.dragMoveState.machineDefId,
+      state.dragMoveState.currentX,
+      state.dragMoveState.currentY,
+      newRotation,
+      state.dragMoveState.gridItemId
+    );
+
+    set({
+      dragMoveState: {
+        ...state.dragMoveState,
+        currentRotation: newRotation,
         isValid,
       },
     });
@@ -450,6 +475,7 @@ export const useStore = create<FactoryState>((set, get) => ({
       state.updateGridItem(state.dragMoveState.gridItemId, {
         x: state.dragMoveState.currentX,
         y: state.dragMoveState.currentY,
+        rotation: state.dragMoveState.currentRotation,
       });
     }
     // If not valid, the item stays at original position
