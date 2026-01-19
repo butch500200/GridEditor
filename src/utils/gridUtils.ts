@@ -226,7 +226,7 @@ const findAStarPath = (
   fScore.set(posKey(start), h(start));
 
   let iterations = 0;
-  const maxIterations = 10000; // Safety limit to prevent infinite loops
+  const maxIterations = 500; // Safety limit to prevent infinite loops
 
   while (openSet.length > 0 && iterations < maxIterations) {
     iterations++;

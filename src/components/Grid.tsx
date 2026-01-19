@@ -410,14 +410,14 @@ const ConnectionLine: React.FC<{
         strokeLinejoin="round"
         strokeDasharray={`${cellSize * 0.1} ${cellSize * 0.1}`}
       />
-      {/* Moving items animation */}
-      {[0, 0.25, 0.5, 0.75].map((offset) => (
-        <circle key={offset} r={cellSize * 0.1} fill="#F5C518">
+      {/* Moving items animation - only show if rate > 0 */}
+      {rate > 0 && [0, 0.25, 0.5, 0.75].map((offset) => (
+        <circle key={offset} r={cellSize * 0.12} fill="#F5C518" opacity={0.9}>
           <animateMotion
             path={d}
-            dur="2s"
+            dur="3s"
             repeatCount="indefinite"
-            begin={`${offset * 2}s`}
+            begin={`${offset * 3}s`}
           />
         </circle>
       ))}
@@ -434,7 +434,7 @@ const ConnectionLine: React.FC<{
           className="pointer-events-none select-none"
           style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
         >
-          {rate.toFixed(1)}/s
+          {rate.toFixed(0)}/min
         </text>
       )}
 
@@ -497,12 +497,16 @@ const ConnectionPreview: React.FC<{
     return cells;
   }, [start]);
 
+  // Check if cursor is over an obstacle - if so, skip A* for performance
+  const cursorKey = `${Math.floor(cursorPos.x)},${Math.floor(cursorPos.y)}`;
+  const isTargetBlocked = obstacles.has(cursorKey);
+
   const path = calculateManhattanPath(
     start,
     getRotatedDirection(portDef.direction, item.rotation),
     cursorPos,
     'N', // Default direction for cursor
-    obstacles,
+    isTargetBlocked ? undefined : obstacles, // Skip obstacle avoidance if target is blocked
     ignoreCells
   );
 
