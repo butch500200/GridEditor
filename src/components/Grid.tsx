@@ -246,6 +246,8 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
   machineDef,
   cellSize,
 }) => {
+  const getMachineDefById = useStore((state) => state.getMachineDefById);
+
   // Calculate effective dimensions based on rotation
   const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
     machineDef.width,
@@ -270,19 +272,70 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
   };
 
   return (
-    <div style={style} className="flex items-center justify-center">
-      {/* Port indicators on drag ghost */}
-      <PortIndicators
-        ports={machineDef.ports}
-        machineWidth={machineDef.width}
-        machineHeight={machineDef.height}
-        cellSize={cellSize}
-        rotation={dragState.currentRotation}
-      />
-      <span className="text-white/80 text-xs font-medium">
-        {machineDef.name}
-      </span>
-    </div>
+    <>
+      {/* Primary dragged machine ghost */}
+      <div style={style} className="flex items-center justify-center">
+        {/* Port indicators on drag ghost */}
+        <PortIndicators
+          ports={machineDef.ports}
+          machineWidth={machineDef.width}
+          machineHeight={machineDef.height}
+          cellSize={cellSize}
+          rotation={dragState.currentRotation}
+        />
+        <span className="text-white/80 text-xs font-medium">
+          {machineDef.name}
+        </span>
+      </div>
+
+      {/* Additional dragged machines ghosts (multi-selection) */}
+      {dragState.draggedItems?.map((draggedItem) => {
+        const itemMachineDef = getMachineDefById(draggedItem.id.split('-')[0] || '');
+        if (!itemMachineDef) {
+          // Try to get from gridItems
+          const gridItems = useStore.getState().gridItems;
+          const item = gridItems.find(i => i.id === draggedItem.id);
+          if (!item) return null;
+          const def = getMachineDefById(item.machineDefId);
+          if (!def) return null;
+
+          const { width: w, height: h } = getEffectiveDimensions(
+            def.width,
+            def.height,
+            draggedItem.originalRotation
+          );
+
+          const itemStyle: React.CSSProperties = {
+            position: 'absolute',
+            left: (dragState.currentX + draggedItem.offsetX) * cellSize,
+            top: (dragState.currentY + draggedItem.offsetY) * cellSize,
+            width: w * cellSize,
+            height: h * cellSize,
+            backgroundColor: baseColor,
+            border: `2px dashed ${borderColor}`,
+            borderRadius: '4px',
+            pointerEvents: 'none',
+            zIndex: 100,
+          };
+
+          return (
+            <div key={draggedItem.id} style={itemStyle} className="flex items-center justify-center">
+              <PortIndicators
+                ports={def.ports}
+                machineWidth={def.width}
+                machineHeight={def.height}
+                cellSize={cellSize}
+                rotation={draggedItem.originalRotation}
+              />
+              <span className="text-white/80 text-xs font-medium">
+                {def.name}
+              </span>
+            </div>
+          );
+        }
+        return null;
+      })}
+    </>
   );
 };
 
@@ -548,6 +601,7 @@ export const Grid: React.FC = () => {
   const gridItems = useGridItems();
   const ghostPlacement = useGhostPlacement();
   const dragMoveState = useDragMoveState();
+  const multiGhostPlacement = useStore((state) => state.multiGhostPlacement);
   const connections = useStore((state) => state.connections);
   const activePort = useStore((state) => state.activePort);
   const selectedConnectionId = useStore((state) => state.selectedConnectionId);
@@ -571,6 +625,9 @@ export const Grid: React.FC = () => {
   const cancelDragMove = useStore((state) => state.cancelDragMove);
   const addConnection = useStore((state) => state.addConnection);
   const setActivePort = useStore((state) => state.setActivePort);
+  const updateMultiGhostPlacement = useStore((state) => state.updateMultiGhostPlacement);
+  const confirmMultiGhostPlacement = useStore((state) => state.confirmMultiGhostPlacement);
+  const cancelMultiGhostPlacement = useStore((state) => state.cancelMultiGhostPlacement);
 
   /**
    * Memoized set of all occupied grid cells for pathfinding avoidance
@@ -680,6 +737,14 @@ export const Grid: React.FC = () => {
         return;
       }
 
+      // Handle multi-ghost placement (paste mode)
+      if (multiGhostPlacement && currentTool === 'place') {
+        if (pos) {
+          updateMultiGhostPlacement(pos.x, pos.y);
+        }
+        return;
+      }
+
       // Handle regular ghost placement preview
       if (!selectedMachineDefId || currentTool !== 'place') {
         if (ghostPlacement) {
@@ -718,6 +783,8 @@ export const Grid: React.FC = () => {
       setGhostPlacement,
       dragMoveState,
       updateDragMove,
+      multiGhostPlacement,
+      updateMultiGhostPlacement,
       activePort,
     ]
   );
@@ -875,6 +942,12 @@ export const Grid: React.FC = () => {
         return;
       }
 
+      // Handle multi-ghost placement (paste mode)
+      if (multiGhostPlacement && currentTool === 'place') {
+        confirmMultiGhostPlacement();
+        return;
+      }
+
       // Handle placement
       if (selectedMachineDefId && currentTool === 'place') {
         if (isPlacementValid(selectedMachineDefId, pos.x, pos.y, ghostRotation)) {
@@ -907,6 +980,8 @@ export const Grid: React.FC = () => {
       placeGridItem,
       removeGridItem,
       clearSelection,
+      multiGhostPlacement,
+      confirmMultiGhostPlacement,
     ]
   );
 
@@ -945,12 +1020,11 @@ export const Grid: React.FC = () => {
         }
       }
 
-      // Ctrl+V to paste
+      // Ctrl+V to paste (enters placement mode)
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
-        const { pasteFromClipboard } = useStore.getState();
-        // Paste at center of current view or at (0,0)
-        pasteFromClipboard(0, 0);
+        const { pasteSelection } = useStore.getState();
+        pasteSelection();
       }
 
       // R to rotate ghost
@@ -969,6 +1043,8 @@ export const Grid: React.FC = () => {
           cancelDragMove();
           isDraggingRef.current = false;
           dragStartPosRef.current = null;
+        } else if (multiGhostPlacement) {
+          cancelMultiGhostPlacement();
         } else {
           clearSelection();
           setGhostRotation(0);
@@ -980,7 +1056,7 @@ export const Grid: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedMachineDefId, currentTool, clearSelection, dragMoveState, cancelDragMove, rotateDragMove]);
+  }, [selectedMachineDefId, currentTool, clearSelection, dragMoveState, cancelDragMove, rotateDragMove, multiGhostPlacement, cancelMultiGhostPlacement]);
 
   /**
    * Handle global mouse up for drag completion
@@ -1134,7 +1210,9 @@ export const Grid: React.FC = () => {
           const machineDef = getMachineDefById(item.machineDefId);
           if (!machineDef) return null;
 
-          const isDragging = dragMoveState?.gridItemId === item.id;
+          // Check if this item is being dragged (primary or in multi-selection)
+          const isDragging = dragMoveState?.gridItemId === item.id ||
+            dragMoveState?.draggedItems?.some(d => d.id === item.id);
           const activePortForThisItem = activePort?.itemId === item.id ? activePort.portIndex : undefined;
 
           return (
@@ -1170,6 +1248,34 @@ export const Grid: React.FC = () => {
             machineDef={dragMoveMachineDef}
             cellSize={CELL_SIZE}
           />
+        )}
+
+        {/* Render multi-ghost placement (paste mode) */}
+        {multiGhostPlacement && !dragMoveState && (
+          <>
+            {multiGhostPlacement.machines.map((machine, index) => {
+              const machineDef = getMachineDefById(machine.machineDefId);
+              if (!machineDef) return null;
+
+              const ghostX = multiGhostPlacement.currentX + machine.offsetX;
+              const ghostY = multiGhostPlacement.currentY + machine.offsetY;
+
+              return (
+                <GhostPreview
+                  key={index}
+                  ghost={{
+                    machineDefId: machine.machineDefId,
+                    x: ghostX,
+                    y: ghostY,
+                    rotation: machine.rotation,
+                    isValid: multiGhostPlacement.isValid,
+                  }}
+                  machineDef={machineDef}
+                  cellSize={CELL_SIZE}
+                />
+              );
+            })}
+          </>
         )}
       </div>
     </div>

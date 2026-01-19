@@ -191,5 +191,64 @@ describe('Multi-Selection', () => {
       const pastedSorted = pastedMachines.sort((a, b) => a.x - b.x);
       expect(pastedSorted[1].x - pastedSorted[0].x).toBe(2);
     });
+
+    it('should paste at the target location with top-left machine at target coordinates', () => {
+      const { addMachineDef, placeGridItem, setSelectedGridItems, copyToClipboard, pasteFromClipboard } = useStore.getState();
+
+      const machineDef: MachineDef = {
+        id: 'test-machine',
+        name: 'Test Machine',
+        width: 1,
+        height: 1,
+        color: '#FF0000',
+        ports: [],
+      };
+
+      addMachineDef(machineDef);
+
+      // Place machines at (5, 5) and (7, 8)
+      const machine1Id = placeGridItem({
+        machineDefId: 'test-machine',
+        x: 5,
+        y: 5,
+        rotation: 0,
+        assignedRecipeId: null,
+      });
+
+      const machine2Id = placeGridItem({
+        machineDefId: 'test-machine',
+        x: 7,
+        y: 8,
+        rotation: 0,
+        assignedRecipeId: null,
+      });
+
+      // Select both
+      setSelectedGridItems([machine1Id, machine2Id]);
+
+      // Copy
+      copyToClipboard();
+
+      // Paste at (10, 10) - the top-left machine should be at (10, 10)
+      pasteFromClipboard(10, 10);
+
+      const { gridItems } = useStore.getState();
+      const pastedMachines = gridItems.filter(i => i.id !== machine1Id && i.id !== machine2Id);
+
+      // Find the top-left pasted machine
+      const topLeft = pastedMachines.reduce((min, m) => {
+        if (m.x < min.x || (m.x === min.x && m.y < min.y)) return m;
+        return min;
+      });
+
+      // Top-left machine should be at the paste location
+      expect(topLeft.x).toBe(10);
+      expect(topLeft.y).toBe(10);
+
+      // Other machine should maintain relative offset
+      const other = pastedMachines.find(m => m.id !== topLeft.id)!;
+      expect(other.x).toBe(10 + (7 - 5)); // 12
+      expect(other.y).toBe(10 + (8 - 5)); // 13
+    });
   });
 });

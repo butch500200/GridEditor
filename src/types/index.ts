@@ -220,7 +220,7 @@ export interface BoundingBox {
  * @property isValid - Whether the current drop position is valid
  */
 export interface DragMoveState {
-  gridItemId: string;
+  gridItemId: string; // Primary item being dragged
   machineDefId: string;
   originalX: number;
   originalY: number;
@@ -228,5 +228,37 @@ export interface DragMoveState {
   currentX: number;
   currentY: number;
   currentRotation: Rotation;
+  isValid: boolean;
+  // Multi-selection support
+  draggedItems?: Array<{
+    id: string;
+    originalX: number;
+    originalY: number;
+    originalRotation: Rotation;
+    offsetX: number; // Offset from primary item
+    offsetY: number;
+  }>;
+}
+
+/**
+ * @description Represents a machine in multi-ghost placement mode
+ * Used when pasting multiple machines at once
+ */
+export interface MultiGhostMachine {
+  machineDefId: string;
+  offsetX: number;
+  offsetY: number;
+  rotation: Rotation;
+  assignedRecipeId: string | null;
+}
+
+/**
+ * @description State for placing multiple machines at once (e.g., from paste)
+ * Similar to ghost placement but handles multiple machines with relative offsets
+ */
+export interface MultiGhostPlacement {
+  machines: MultiGhostMachine[];
+  currentX: number;
+  currentY: number;
   isValid: boolean;
 }

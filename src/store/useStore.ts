@@ -18,6 +18,7 @@ import type {
   Recipe,
   GridItem,
   GhostPlacement,
+  MultiGhostPlacement,
   ToolType,
   Rotation,
   BoundingBox,
@@ -58,6 +59,8 @@ interface FactoryState {
   selectedConnectionId: string | null;
   /** Ghost placement preview state */
   ghostPlacement: GhostPlacement | null;
+  /** Multi-ghost placement for pasting multiple machines */
+  multiGhostPlacement: MultiGhostPlacement | null;
   /** Drag-to-move state for moving existing machines */
   dragMoveState: DragMoveState | null;
   /** Currently selected port for starting/ending a connection */
@@ -153,8 +156,18 @@ interface FactoryState {
   // Actions - Clipboard
   /** Copy selected items to clipboard */
   copyToClipboard: () => void;
-  /** Paste from clipboard at position */
+  copySelection: () => void; // Alias for copyToClipboard
+  /** Paste from clipboard, entering multi-ghost placement mode */
   pasteFromClipboard: (targetX: number, targetY: number) => void;
+  pasteSelection: () => void; // Enters placement mode
+
+  // Actions - Multi-Ghost Placement
+  /** Update multi-ghost placement position and validate */
+  updateMultiGhostPlacement: (x: number, y: number) => void;
+  /** Confirm and place all machines in multi-ghost */
+  confirmMultiGhostPlacement: () => void;
+  /** Cancel multi-ghost placement */
+  cancelMultiGhostPlacement: () => void;
 
   // Actions - Modals
   /** Open the machine builder modal (optionally for editing) */
@@ -191,6 +204,7 @@ export const useStore = create<FactoryState>((set, get) => ({
   selectedGridItemIds: [],
   selectedConnectionId: null,
   ghostPlacement: null,
+  multiGhostPlacement: null,
   dragMoveState: null,
   activePort: null,
   activeModal: null,
@@ -616,6 +630,139 @@ export const useStore = create<FactoryState>((set, get) => ({
     }));
   },
 
+  copySelection: () => {
+    // Alias for copyToClipboard
+    get().copyToClipboard();
+  },
+
+  pasteSelection: () => {
+    const state = get();
+    const { clipboard } = state;
+
+    if (!clipboard || clipboard.gridItems.length === 0) return;
+
+    // Find bounding box of clipboard items
+    let minX = Infinity, minY = Infinity;
+    clipboard.gridItems.forEach((item) => {
+      minX = Math.min(minX, item.x);
+      minY = Math.min(minY, item.y);
+    });
+
+    // Convert clipboard items to MultiGhostMachine format
+    const machines = clipboard.gridItems.map((item) => ({
+      machineDefId: item.machineDefId,
+      offsetX: item.x - minX,
+      offsetY: item.y - minY,
+      rotation: item.rotation,
+      assignedRecipeId: item.assignedRecipeId,
+    }));
+
+    // Enter placement mode with multi-ghost
+    set({
+      multiGhostPlacement: {
+        machines,
+        currentX: minX,
+        currentY: minY,
+        isValid: false,
+      },
+      currentTool: 'place',
+    });
+  },
+
+  updateMultiGhostPlacement: (x, y) => {
+    const state = get();
+    if (!state.multiGhostPlacement) return;
+
+    // Validate all machines can be placed
+    let isValid = true;
+    for (const machine of state.multiGhostPlacement.machines) {
+      const machineX = x + machine.offsetX;
+      const machineY = y + machine.offsetY;
+      if (!state.isPlacementValid(machine.machineDefId, machineX, machineY, machine.rotation)) {
+        isValid = false;
+        break;
+      }
+    }
+
+    set({
+      multiGhostPlacement: {
+        ...state.multiGhostPlacement,
+        currentX: x,
+        currentY: y,
+        isValid,
+      },
+    });
+  },
+
+  confirmMultiGhostPlacement: () => {
+    const state = get();
+    if (!state.multiGhostPlacement || !state.multiGhostPlacement.isValid) return;
+
+    const { machines, currentX, currentY } = state.multiGhostPlacement;
+
+    // Place all machines
+    const newItems: GridItem[] = [];
+    const newItemIndices: number[] = [];
+
+    machines.forEach((machine, index) => {
+      const newId = state.placeGridItem({
+        machineDefId: machine.machineDefId,
+        x: currentX + machine.offsetX,
+        y: currentY + machine.offsetY,
+        rotation: machine.rotation,
+        assignedRecipeId: machine.assignedRecipeId,
+      });
+      newItemIndices.push(index);
+    });
+
+    // Recreate connections if any
+    if (state.clipboard?.connections) {
+      const allItems = get().gridItems;
+      const newItemsStartIndex = allItems.length - machines.length;
+
+      const oldToNewIdMap = new Map<number, string>();
+      machines.forEach((_, index) => {
+        const newItem = allItems[newItemsStartIndex + index];
+        if (newItem) {
+          oldToNewIdMap.set(index, newItem.id);
+        }
+      });
+
+      const newConnections: Connection[] = [];
+      state.clipboard.connections.forEach((conn) => {
+        const newSourceId = oldToNewIdMap.get(conn.sourceIndex);
+        const newTargetId = oldToNewIdMap.get(conn.targetIndex);
+
+        if (newSourceId && newTargetId) {
+          newConnections.push({
+            id: generateId('conn'),
+            sourceItemId: newSourceId,
+            sourcePortIndex: conn.sourcePortIndex,
+            targetItemId: newTargetId,
+            targetPortIndex: conn.targetPortIndex,
+          });
+        }
+      });
+
+      set((state) => ({
+        connections: [...state.connections, ...newConnections],
+      }));
+    }
+
+    // Clear multi-ghost placement
+    set({
+      multiGhostPlacement: null,
+      currentTool: 'select',
+    });
+  },
+
+  cancelMultiGhostPlacement: () => {
+    set({
+      multiGhostPlacement: null,
+      currentTool: 'select',
+    });
+  },
+
   // Modal Actions
   openMachineBuilder: (machineId) => {
     set({
@@ -645,6 +792,31 @@ export const useStore = create<FactoryState>((set, get) => ({
     const gridItem = state.gridItems.find((item) => item.id === gridItemId);
     if (!gridItem) return;
 
+    // Check if this item is part of a multi-selection
+    const selectedIds = state.selectedGridItemIds;
+    const isMultiSelect = selectedIds.length > 1 && selectedIds.includes(gridItemId);
+
+    let draggedItems: DragMoveState['draggedItems'] = undefined;
+
+    if (isMultiSelect) {
+      // Include all selected items in the drag operation
+      draggedItems = selectedIds
+        .filter(id => id !== gridItemId) // Exclude primary item
+        .map(id => {
+          const item = state.gridItems.find(i => i.id === id);
+          if (!item) return null;
+          return {
+            id: item.id,
+            originalX: item.x,
+            originalY: item.y,
+            originalRotation: item.rotation,
+            offsetX: item.x - gridItem.x,
+            offsetY: item.y - gridItem.y,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+    }
+
     set({
       dragMoveState: {
         gridItemId,
@@ -656,6 +828,7 @@ export const useStore = create<FactoryState>((set, get) => ({
         currentY: gridItem.y,
         currentRotation: gridItem.rotation,
         isValid: true, // Starting position is always valid
+        draggedItems,
       },
       selectedGridItemId: null, // Clear selection while dragging
       ghostPlacement: null, // Clear any ghost placement
@@ -666,13 +839,41 @@ export const useStore = create<FactoryState>((set, get) => ({
     const state = get();
     if (!state.dragMoveState) return;
 
-    const isValid = state.isPlacementValid(
+    // Check if primary item is valid
+    let isValid = state.isPlacementValid(
       state.dragMoveState.machineDefId,
       x,
       y,
       state.dragMoveState.currentRotation,
       state.dragMoveState.gridItemId // Exclude the item being moved from collision checks
     );
+
+    // If multi-select, also validate all dragged items can fit
+    if (isValid && state.dragMoveState.draggedItems) {
+      const excludeIds = [
+        state.dragMoveState.gridItemId,
+        ...state.dragMoveState.draggedItems.map(item => item.id)
+      ];
+
+      for (const draggedItem of state.dragMoveState.draggedItems) {
+        const newX = x + draggedItem.offsetX;
+        const newY = y + draggedItem.offsetY;
+        const item = state.gridItems.find(i => i.id === draggedItem.id);
+        if (!item) {
+          isValid = false;
+          break;
+        }
+        const machineDef = state.getMachineDefById(item.machineDefId);
+        if (!machineDef) {
+          isValid = false;
+          break;
+        }
+        if (!state.isPlacementValid(machineDef.id, newX, newY, draggedItem.originalRotation, ...excludeIds)) {
+          isValid = false;
+          break;
+        }
+      }
+    }
 
     set({
       dragMoveState: {
@@ -711,12 +912,23 @@ export const useStore = create<FactoryState>((set, get) => ({
     if (!state.dragMoveState) return;
 
     if (state.dragMoveState.isValid) {
-      // Update the grid item position
+      // Update the primary grid item position
       state.updateGridItem(state.dragMoveState.gridItemId, {
         x: state.dragMoveState.currentX,
         y: state.dragMoveState.currentY,
         rotation: state.dragMoveState.currentRotation,
       });
+
+      // Update all dragged items if multi-select
+      if (state.dragMoveState.draggedItems) {
+        for (const draggedItem of state.dragMoveState.draggedItems) {
+          state.updateGridItem(draggedItem.id, {
+            x: state.dragMoveState.currentX + draggedItem.offsetX,
+            y: state.dragMoveState.currentY + draggedItem.offsetY,
+            rotation: draggedItem.originalRotation,
+          });
+        }
+      }
     }
     // If not valid, the item stays at original position
 
