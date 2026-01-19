@@ -36,7 +36,7 @@ const Header: React.FC = () => {
 
       {/* Version/Status indicator */}
       <div className="text-endfield-muted text-xs">
-        v0.2.0 - Phase 1, 2 & 3
+        v0.3.0 - Phase 1, 2, 3 & 4
       </div>
     </header>
   );
@@ -64,7 +64,11 @@ const StatusBar: React.FC = () => {
     if (currentTool === 'delete') {
       return 'Click on a machine to delete it | Esc to cancel';
     }
-    return 'Select a machine from the sidebar, or drag placed machines to move them';
+    const activePort = useStore.getState().activePort;
+    if (activePort) {
+      return 'Select target port to complete belt | Esc to cancel';
+    }
+    return 'Select a machine from the sidebar, or drag placed machines to move them | Click ports to create belts';
   };
 
   return (

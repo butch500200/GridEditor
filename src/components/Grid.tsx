@@ -18,9 +18,24 @@ import {
   useDragMoveState,
 } from '../store/useStore';
 import { GRID_CONFIG } from '../constants';
-import { getEffectiveDimensions } from '../utils/gridUtils';
+import {
+  getEffectiveDimensions,
+  getRotatedPortPosition,
+  getRotatedDirection,
+  calculateManhattanPath,
+} from '../utils/gridUtils';
+import { calculateConnectionRates } from '../utils/rateUtils';
 import { PortIndicators } from './PortIndicators';
-import type { GridItem, MachineDef, Rotation, GhostPlacement, DragMoveState } from '../types';
+import type {
+  GridItem,
+  MachineDef,
+  Rotation,
+  GhostPlacement,
+  DragMoveState,
+  Connection,
+  ActivePort,
+  GridPosition,
+} from '../types';
 
 /**
  * @description Props for rendering a placed machine
@@ -40,6 +55,14 @@ interface PlacedMachineProps {
   onClick: () => void;
   /** Mouse down handler for drag initiation */
   onMouseDown: (e: React.MouseEvent) => void;
+  /** Callback when a port is clicked */
+  onPortClick?: (portIndex: number) => void;
+  /** Callback when a port mouse down */
+  onPortMouseDown?: (portIndex: number) => void;
+  /** Callback when a port mouse up */
+  onPortMouseUp?: (portIndex: number) => void;
+  /** Active port for connection */
+  activePortIndex?: number;
 }
 
 /**
@@ -56,6 +79,10 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
   isDragging,
   onClick,
   onMouseDown,
+  onPortClick,
+  onPortMouseDown,
+  onPortMouseUp,
+  activePortIndex,
 }) => {
   // Calculate effective dimensions based on rotation
   const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
@@ -70,7 +97,7 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
     top: item.y * cellSize,
     width: effectiveWidth * cellSize,
     height: effectiveHeight * cellSize,
-    backgroundColor: isDragging ? `${machineDef.color}40` : machineDef.color,
+    backgroundColor: isDragging ? `${machineDef.color}40` : `${machineDef.color}CC`,
     border: isDragging
       ? '2px dashed rgba(255,255,255,0.4)'
       : isSelected
@@ -112,6 +139,10 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
           machineHeight={machineDef.height}
           cellSize={cellSize}
           rotation={item.rotation}
+          onPortClick={onPortClick}
+          onPortMouseDown={onPortMouseDown}
+          onPortMouseUp={onPortMouseUp}
+          activePortIndex={activePortIndex}
         />
       )}
       <span
@@ -256,6 +287,244 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
 };
 
 /**
+ * @description Renders a belt connection line with moving items
+ */
+const ConnectionLine: React.FC<{
+  connection: Connection;
+  cellSize: number;
+  gridItems: GridItem[];
+  getMachineDefById: (id: string) => MachineDef | undefined;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+  obstacles: Set<string>;
+  rate: number;
+}> = ({ connection, cellSize, gridItems, getMachineDefById, isSelected, onSelect, onDelete, obstacles, rate }) => {
+  const sourceItem = gridItems.find((i) => i.id === connection.sourceItemId);
+  const targetItem = gridItems.find((i) => i.id === connection.targetItemId);
+
+  if (!sourceItem || !targetItem) return null;
+
+  const sourceDef = getMachineDefById(sourceItem.machineDefId);
+  const targetDef = getMachineDefById(targetItem.machineDefId);
+
+  if (!sourceDef || !targetDef) return null;
+
+  const sourcePortDef = sourceDef.ports[connection.sourcePortIndex];
+  const targetPortDef = targetDef.ports[connection.targetPortIndex];
+
+  const sourcePortPos = getRotatedPortPosition(
+    sourcePortDef,
+    sourceDef.width,
+    sourceDef.height,
+    sourceItem.rotation
+  );
+  const targetPortPos = getRotatedPortPosition(
+    targetPortDef,
+    targetDef.width,
+    targetDef.height,
+    targetItem.rotation
+  );
+
+  const ignoreCells = useMemo(() => {
+    const cells = new Set<string>();
+    // Only allow the specific port cells, not the entire machines
+    cells.add(`${sourceItem.x + sourcePortPos.offsetX},${sourceItem.y + sourcePortPos.offsetY}`);
+    cells.add(`${targetItem.x + targetPortPos.offsetX},${targetItem.y + targetPortPos.offsetY}`);
+    return cells;
+  }, [sourceItem, targetItem, sourcePortPos, targetPortPos]);
+
+  const path = calculateManhattanPath(
+    {
+      x: sourceItem.x + sourcePortPos.offsetX,
+      y: sourceItem.y + sourcePortPos.offsetY,
+    },
+    getRotatedDirection(sourcePortDef.direction, sourceItem.rotation),
+    {
+      x: targetItem.x + targetPortPos.offsetX,
+      y: targetItem.y + targetPortPos.offsetY,
+    },
+    getRotatedDirection(targetPortDef.direction, targetItem.rotation),
+    obstacles,
+    ignoreCells
+  );
+
+  const points = path.map(
+    (p) => `${p.x * cellSize + cellSize / 2},${p.y * cellSize + cellSize / 2}`
+  );
+  const d = `M ${points.join(' L ')}`;
+
+  // Calculate midpoint for delete button and rate label
+  const midPointIndex = Math.floor(path.length / 2);
+  const midPoint = path[midPointIndex];
+  const midX = midPoint.x * cellSize + cellSize / 2;
+  const midY = midPoint.y * cellSize + cellSize / 2;
+
+  return (
+    <g 
+      className="cursor-pointer group" 
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      style={{ pointerEvents: 'auto' }}
+    >
+      {/* Invisible thicker path for easier clicking */}
+      <path
+        d={d}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={cellSize * 0.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Selection highlight */}
+      {isSelected && (
+        <path
+          d={d}
+          fill="none"
+          stroke="#F5C518"
+          strokeWidth={cellSize * 0.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ opacity: 0.4 }}
+        />
+      )}
+      {/* Belt background */}
+      <path
+        d={d}
+        fill="none"
+        stroke={isSelected ? '#F5C518' : 'rgba(40, 40, 40, 0.8)'}
+        strokeWidth={cellSize * 0.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="transition-colors duration-200"
+      />
+      {/* Belt tracks */}
+      <path
+        d={d}
+        fill="none"
+        stroke="rgba(80, 80, 80, 0.5)"
+        strokeWidth={cellSize * 0.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={`${cellSize * 0.1} ${cellSize * 0.1}`}
+      />
+      {/* Moving items animation */}
+      {[0, 0.25, 0.5, 0.75].map((offset) => (
+        <circle key={offset} r={cellSize * 0.1} fill="#F5C518">
+          <animateMotion
+            path={d}
+            dur="2s"
+            repeatCount="indefinite"
+            begin={`${offset * 2}s`}
+          />
+        </circle>
+      ))}
+
+      {/* Rate label */}
+      {rate > 0 && (
+        <text
+          x={midX}
+          y={midY - 15}
+          textAnchor="middle"
+          fill="#F5C518"
+          fontSize={10}
+          fontWeight="bold"
+          className="pointer-events-none select-none"
+          style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+        >
+          {rate.toFixed(1)}/s
+        </text>
+      )}
+
+      {/* Delete button (only visible when selected or hovered) */}
+      {(isSelected) && (
+        <g 
+          transform={`translate(${midX}, ${midY})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="cursor-pointer"
+        >
+          <circle r={12} fill="#EF4444" stroke="#FFFFFF" strokeWidth={2} />
+          <path 
+            d="M -4 -4 L 4 4 M -4 4 L 4 -4" 
+            stroke="#FFFFFF" 
+            strokeWidth={2} 
+            strokeLinecap="round" 
+          />
+        </g>
+      )}
+    </g>
+  );
+};
+
+/**
+ * @description Renders a preview connection line while dragging
+ */
+const ConnectionPreview: React.FC<{
+  activePort: ActivePort;
+  cursorPos: GridPosition;
+  cellSize: number;
+  gridItems: GridItem[];
+  getMachineDefById: (id: string) => MachineDef | undefined;
+  obstacles: Set<string>;
+}> = ({ activePort, cursorPos, cellSize, gridItems, getMachineDefById, obstacles }) => {
+  const item = gridItems.find((i) => i.id === activePort.itemId);
+  const def = item ? getMachineDefById(item.machineDefId) : null;
+
+  if (!item || !def) return null;
+
+  const portDef = def.ports[activePort.portIndex];
+  const portPos = getRotatedPortPosition(
+    portDef,
+    def.width,
+    def.height,
+    item.rotation
+  );
+
+  const start = {
+    x: item.x + portPos.offsetX,
+    y: item.y + portPos.offsetY,
+  };
+
+  const ignoreCells = useMemo(() => {
+    const cells = new Set<string>();
+    // Only allow the specific port cell, not the entire machine
+    cells.add(`${start.x},${start.y}`);
+    return cells;
+  }, [start]);
+
+  const path = calculateManhattanPath(
+    start,
+    getRotatedDirection(portDef.direction, item.rotation),
+    cursorPos,
+    'N', // Default direction for cursor
+    obstacles,
+    ignoreCells
+  );
+
+  const points = path.map(
+    (p) => `${p.x * cellSize + cellSize / 2},${p.y * cellSize + cellSize / 2}`
+  );
+  const d = `M ${points.join(' L ')}`;
+
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke="rgba(245, 197, 24, 0.5)"
+      strokeWidth={cellSize * 0.3}
+      strokeDasharray={`${cellSize * 0.2} ${cellSize * 0.1}`}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+};
+
+/**
  * @description Main grid component
  *
  * Features:
@@ -275,6 +544,9 @@ export const Grid: React.FC = () => {
   const gridItems = useGridItems();
   const ghostPlacement = useGhostPlacement();
   const dragMoveState = useDragMoveState();
+  const connections = useStore((state) => state.connections);
+  const activePort = useStore((state) => state.activePort);
+  const selectedConnectionId = useStore((state) => state.selectedConnectionId);
 
   const selectedMachineDefId = useStore((state) => state.selectedMachineDefId);
   const selectedGridItemId = useStore((state) => state.selectedGridItemId);
@@ -284,16 +556,55 @@ export const Grid: React.FC = () => {
   const setGhostPlacement = useStore((state) => state.setGhostPlacement);
   const placeGridItem = useStore((state) => state.placeGridItem);
   const selectGridItem = useStore((state) => state.selectGridItem);
+  const selectConnection = useStore((state) => state.selectConnection);
   const removeGridItem = useStore((state) => state.removeGridItem);
+  const removeConnection = useStore((state) => state.removeConnection);
   const clearSelection = useStore((state) => state.clearSelection);
   const startDragMove = useStore((state) => state.startDragMove);
   const updateDragMove = useStore((state) => state.updateDragMove);
   const rotateDragMove = useStore((state) => state.rotateDragMove);
   const completeDragMove = useStore((state) => state.completeDragMove);
   const cancelDragMove = useStore((state) => state.cancelDragMove);
+  const addConnection = useStore((state) => state.addConnection);
+  const setActivePort = useStore((state) => state.setActivePort);
+
+  /**
+   * Memoized set of all occupied grid cells for pathfinding avoidance
+   */
+  const occupiedCells = useMemo(() => {
+    const cells = new Set<string>();
+    gridItems.forEach((item) => {
+      const def = getMachineDefById(item.machineDefId);
+      if (!def) return;
+      const { width, height } = getEffectiveDimensions(def.width, def.height, item.rotation);
+      for (let ox = 0; ox < width; ox++) {
+        for (let oy = 0; oy < height; oy++) {
+          cells.add(`${item.x + ox},${item.y + oy}`);
+        }
+      }
+    });
+    return cells;
+  }, [gridItems, getMachineDefById]);
+
+  /**
+   * Calculate throughput for all connections
+   * Simple propagation logic for splitters, mergers, and production machines
+   */
+  const connectionRates = useMemo(() => {
+    return calculateConnectionRates(
+      gridItems,
+      connections,
+      getMachineDefById,
+      useStore.getState().getRecipeById
+    );
+  }, [connections, gridItems, getMachineDefById]);
 
   // Track current ghost rotation locally for keyboard control
   const [ghostRotation, setGhostRotation] = useState<Rotation>(0);
+
+  // Track mouse position for connection preview
+  const [dragMousePos, setDragMousePos] = useState<GridPosition | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Track if we're in a drag operation
   const isDraggingRef = useRef(false);
@@ -349,6 +660,14 @@ export const Grid: React.FC = () => {
     (e: React.MouseEvent) => {
       const pos = getGridPosition(e.clientX, e.clientY);
 
+      // Handle connection dragging preview
+      if (activePort) {
+        if (pos) {
+          setDragMousePos(pos);
+        }
+        return;
+      }
+
       // Handle drag-to-move
       if (dragMoveState && isDraggingRef.current) {
         if (pos) {
@@ -395,6 +714,7 @@ export const Grid: React.FC = () => {
       setGhostPlacement,
       dragMoveState,
       updateDragMove,
+      activePort,
     ]
   );
 
@@ -438,6 +758,81 @@ export const Grid: React.FC = () => {
       startDragMove(itemId);
     },
     [currentTool, getGridPosition, startDragMove]
+  );
+
+  /**
+   * Handle port interaction (clicks and drags)
+   */
+  const handlePortMouseDown = useCallback(
+    (itemId: string, portIndex: number) => {
+      const item = gridItems.find((i) => i.id === itemId);
+      const machineDef = item ? getMachineDefById(item.machineDefId) : null;
+      if (!item || !machineDef) return;
+
+      const port = machineDef.ports[portIndex];
+
+      if (!activePort) {
+        // Start connection
+        setActivePort({ itemId, portIndex, type: port.type });
+        setIsConnecting(true);
+      } else {
+        // Try to complete connection (click-to-click)
+        if (activePort.itemId === itemId) {
+          setActivePort(null);
+          setIsConnecting(false);
+          return;
+        }
+
+        if (activePort.type === port.type) {
+          setActivePort(null);
+          setIsConnecting(false);
+          return;
+        }
+
+        const source = activePort.type === 'output' ? activePort : { itemId, portIndex, type: port.type };
+        const target = activePort.type === 'input' ? activePort : { itemId, portIndex, type: port.type };
+
+        addConnection({
+          sourceItemId: source.itemId,
+          sourcePortIndex: source.portIndex,
+          targetItemId: target.itemId,
+          targetPortIndex: target.portIndex,
+        });
+        setIsConnecting(false);
+        setDragMousePos(null);
+      }
+    },
+    [currentTool, gridItems, getMachineDefById, activePort, setActivePort, addConnection]
+  );
+
+  const handlePortMouseUp = useCallback(
+    (itemId: string, portIndex: number) => {
+      if (!activePort || !isConnecting) return;
+
+      // Only complete if we are on a different machine
+      if (activePort.itemId !== itemId) {
+        const item = gridItems.find((i) => i.id === itemId);
+        const machineDef = item ? getMachineDefById(item.machineDefId) : null;
+        if (!item || !machineDef) return;
+
+        const port = machineDef.ports[portIndex];
+        if (activePort.type !== port.type) {
+          const source = activePort.type === 'output' ? activePort : { itemId, portIndex, type: port.type };
+          const target = activePort.type === 'input' ? activePort : { itemId, portIndex, type: port.type };
+
+          addConnection({
+            sourceItemId: source.itemId,
+            sourcePortIndex: source.portIndex,
+            targetItemId: target.itemId,
+            targetPortIndex: target.portIndex,
+          });
+        }
+      }
+
+      setIsConnecting(false);
+      setDragMousePos(null);
+    },
+    [currentTool, activePort, isConnecting, gridItems, getMachineDefById, addConnection]
   );
 
   /**
@@ -492,6 +887,8 @@ export const Grid: React.FC = () => {
       // Handle select tool - clicking empty space clears selection
       if (currentTool === 'select') {
         clearSelection();
+        setIsConnecting(false);
+        setDragMousePos(null);
       }
     },
     [
@@ -546,6 +943,8 @@ export const Grid: React.FC = () => {
         } else {
           clearSelection();
           setGhostRotation(0);
+          setDragMousePos(null);
+          setIsConnecting(false);
         }
       }
     };
@@ -564,6 +963,7 @@ export const Grid: React.FC = () => {
         isDraggingRef.current = false;
         dragStartPosRef.current = null;
       }
+      setIsConnecting(false);
     };
 
     window.addEventListener('mouseup', handleGlobalMouseUp);
@@ -641,12 +1041,53 @@ export const Grid: React.FC = () => {
       style={{ cursor: cursorStyle }}
     >
       <div className="relative no-select" style={gridStyle}>
+        {/* SVG layer for connections */}
+        <svg
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: gridWidth,
+            height: gridHeight,
+            pointerEvents: 'none',
+            zIndex: 5,
+          }}
+        >
+          {connections.map((conn) => (
+            <ConnectionLine
+              key={conn.id}
+              connection={conn}
+              cellSize={CELL_SIZE}
+              gridItems={gridItems}
+              getMachineDefById={getMachineDefById}
+              isSelected={selectedConnectionId === conn.id}
+              onSelect={() => selectConnection(conn.id)}
+              onDelete={() => removeConnection(conn.id)}
+              obstacles={occupiedCells}
+              rate={connectionRates[conn.id] || 0}
+            />
+          ))}
+
+            {/* Render connection preview */}
+            {activePort && dragMousePos && (
+              <ConnectionPreview
+                activePort={activePort}
+                cursorPos={dragMousePos}
+                cellSize={CELL_SIZE}
+                gridItems={gridItems}
+                getMachineDefById={getMachineDefById}
+                obstacles={occupiedCells}
+              />
+            )}
+        </svg>
+
         {/* Render placed machines */}
         {gridItems.map((item) => {
           const machineDef = getMachineDefById(item.machineDefId);
           if (!machineDef) return null;
 
           const isDragging = dragMoveState?.gridItemId === item.id;
+          const activePortForThisItem = activePort?.itemId === item.id ? activePort.portIndex : undefined;
 
           return (
             <PlacedMachine
@@ -658,6 +1099,9 @@ export const Grid: React.FC = () => {
               isDragging={isDragging}
               onClick={() => handleMachineClick(item.id)}
               onMouseDown={(e) => handleMachineMouseDown(e, item.id)}
+              onPortMouseDown={(portIndex) => handlePortMouseDown(item.id, portIndex)}
+              onPortMouseUp={(portIndex) => handlePortMouseUp(item.id, portIndex)}
+              activePortIndex={activePortForThisItem}
             />
           );
         })}

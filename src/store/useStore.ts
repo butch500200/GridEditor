@@ -22,6 +22,8 @@ import type {
   Rotation,
   BoundingBox,
   DragMoveState,
+  Connection,
+  ActivePort,
 } from '../types';
 
 /**
@@ -40,6 +42,8 @@ interface FactoryState {
   recipes: Recipe[];
   /** Placed machines on the grid */
   gridItems: GridItem[];
+  /** Belt connections between machines */
+  connections: Connection[];
 
   // UI State
   /** Currently selected tool */
@@ -48,10 +52,14 @@ interface FactoryState {
   selectedMachineDefId: string | null;
   /** Currently selected placed item ID (for inspection) */
   selectedGridItemId: string | null;
+  /** Currently selected connection ID */
+  selectedConnectionId: string | null;
   /** Ghost placement preview state */
   ghostPlacement: GhostPlacement | null;
   /** Drag-to-move state for moving existing machines */
   dragMoveState: DragMoveState | null;
+  /** Currently selected port for starting/ending a connection */
+  activePort: ActivePort | null;
   /** Currently open modal */
   activeModal: ModalType;
   /** Machine being edited (null for new) */
@@ -104,6 +112,12 @@ interface FactoryState {
     rotation: Rotation
   ) => BoundingBox | null;
 
+  // Actions - Connections
+  /** Add a new connection between ports */
+  addConnection: (connection: Omit<Connection, 'id'>) => void;
+  /** Remove a connection by ID */
+  removeConnection: (id: string) => void;
+
   // Actions - UI State
   /** Set the current tool */
   setCurrentTool: (tool: ToolType) => void;
@@ -111,8 +125,12 @@ interface FactoryState {
   selectMachineDef: (id: string | null) => void;
   /** Select a placed grid item for inspection */
   selectGridItem: (id: string | null) => void;
+  /** Select a connection for inspection/deletion */
+  selectConnection: (id: string | null) => void;
   /** Update ghost placement preview */
   setGhostPlacement: (ghost: GhostPlacement | null) => void;
+  /** Set the active port for connection creation */
+  setActivePort: (activePort: ActivePort | null) => void;
   /** Clear all selection state */
   clearSelection: () => void;
 
@@ -142,13 +160,16 @@ export const useStore = create<FactoryState>((set, get) => ({
   machineDefs: [],
   recipes: [],
   gridItems: [],
+  connections: [],
 
   // Initial UI State
   currentTool: 'select',
   selectedMachineDefId: null,
   selectedGridItemId: null,
+  selectedConnectionId: null,
   ghostPlacement: null,
   dragMoveState: null,
+  activePort: null,
   activeModal: null,
   editingMachineId: null,
   editingRecipeId: null,
@@ -169,14 +190,26 @@ export const useStore = create<FactoryState>((set, get) => ({
   },
 
   deleteMachineDef: (id) => {
-    set((state) => ({
-      machineDefs: state.machineDefs.filter((def) => def.id !== id),
-      // Also remove any placed instances of this machine
-      gridItems: state.gridItems.filter((item) => item.machineDefId !== id),
-      // Clear selection if the deleted machine was selected
-      selectedMachineDefId:
-        state.selectedMachineDefId === id ? null : state.selectedMachineDefId,
-    }));
+    set((state) => {
+      const itemIdsToRemove = state.gridItems
+        .filter((item) => item.machineDefId === id)
+        .map((item) => item.id);
+
+      return {
+        machineDefs: state.machineDefs.filter((def) => def.id !== id),
+        // Also remove any placed instances of this machine
+        gridItems: state.gridItems.filter((item) => item.machineDefId !== id),
+        // Remove associated connections
+        connections: state.connections.filter(
+          (c) =>
+            !itemIdsToRemove.includes(c.sourceItemId) &&
+            !itemIdsToRemove.includes(c.targetItemId)
+        ),
+        // Clear selection if the deleted machine was selected
+        selectedMachineDefId:
+          state.selectedMachineDefId === id ? null : state.selectedMachineDefId,
+      };
+    });
   },
 
   getMachineDefById: (id) => {
@@ -233,6 +266,10 @@ export const useStore = create<FactoryState>((set, get) => ({
   removeGridItem: (id) => {
     set((state) => ({
       gridItems: state.gridItems.filter((item) => item.id !== id),
+      // Remove associated connections
+      connections: state.connections.filter(
+        (c) => c.sourceItemId !== id && c.targetItemId !== id
+      ),
       // Clear selection if the removed item was selected
       selectedGridItemId:
         state.selectedGridItemId === id ? null : state.selectedGridItemId,
@@ -264,6 +301,22 @@ export const useStore = create<FactoryState>((set, get) => ({
       maxX: x + effectiveWidth - 1,
       maxY: y + effectiveHeight - 1,
     };
+  },
+
+  // Connection Actions
+  addConnection: (connection) => {
+    const id = generateId('conn');
+    set((state) => ({
+      connections: [...state.connections, { ...connection, id }],
+      activePort: null, // Reset after successful connection
+    }));
+  },
+
+  removeConnection: (id) => {
+    set((state) => ({
+      connections: state.connections.filter((c) => c.id !== id),
+      selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId,
+    }));
   },
 
   isPlacementValid: (machineDefId, x, y, rotation, excludeItemId) => {
@@ -323,6 +376,7 @@ export const useStore = create<FactoryState>((set, get) => ({
     set({
       selectedMachineDefId: id,
       selectedGridItemId: null, // Clear grid item selection
+      selectedConnectionId: null, // Clear connection selection
       currentTool: id ? 'place' : 'select',
       ghostPlacement: null,
     });
@@ -332,6 +386,17 @@ export const useStore = create<FactoryState>((set, get) => ({
     set({
       selectedGridItemId: id,
       selectedMachineDefId: null, // Clear machine def selection
+      selectedConnectionId: null, // Clear connection selection
+      currentTool: 'select',
+      ghostPlacement: null,
+    });
+  },
+
+  selectConnection: (id) => {
+    set({
+      selectedConnectionId: id,
+      selectedGridItemId: null,
+      selectedMachineDefId: null,
       currentTool: 'select',
       ghostPlacement: null,
     });
@@ -341,13 +406,19 @@ export const useStore = create<FactoryState>((set, get) => ({
     set({ ghostPlacement: ghost });
   },
 
+  setActivePort: (activePort) => {
+    set({ activePort });
+  },
+
   clearSelection: () => {
     set({
       selectedMachineDefId: null,
       selectedGridItemId: null,
+      selectedConnectionId: null,
       currentTool: 'select',
       ghostPlacement: null,
       dragMoveState: null,
+      activePort: null,
     });
   },
 

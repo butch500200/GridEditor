@@ -171,6 +171,33 @@ export interface GhostPlacement {
 export type ToolType = 'select' | 'place' | 'delete';
 
 /**
+ * @description Represents a belt connection between two machine ports
+ *
+ * @property id - Unique identifier for this connection
+ * @property sourceItemId - ID of the source grid item (output port)
+ * @property sourcePortIndex - Index of the port on the source machine
+ * @property targetItemId - ID of the target grid item (input port)
+ * @property targetPortIndex - Index of the port on the target machine
+ * @property path - Array of grid coordinates defining the belt's path
+ */
+export interface Connection {
+  id: string;
+  sourceItemId: string;
+  sourcePortIndex: number;
+  targetItemId: string;
+  targetPortIndex: number;
+}
+
+/**
+ * @description State for currently selected port during connection creation
+ */
+export interface ActivePort {
+  itemId: string;
+  portIndex: number;
+  type: PortType;
+}
+
+/**
  * @description Bounding box for collision detection
  */
 export interface BoundingBox {

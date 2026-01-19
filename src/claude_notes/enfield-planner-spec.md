@@ -104,6 +104,6 @@ We are building a **web-based visual planning tool** for "Enfield AIC". The goal
 
 ### Phase 4: Connections
 1.  Implement an SVG layer on top of the grid. [ ]
-2.  Draw bezier curves or straight lines between connected ports. [ ]
+2.  Draw bezier curves or straight lines between connected ports, These are to simulate belts between the machines. These should follow the grids  [ ]
 
 ---

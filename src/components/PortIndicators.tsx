@@ -26,6 +26,14 @@ interface PortIndicatorsProps {
   rotation?: Rotation;
   /** Whether to show tooltips (default: true) */
   showTooltips?: boolean;
+  /** Callback when a port is clicked */
+  onPortClick?: (portIndex: number) => void;
+  /** Callback when a port mouse down */
+  onPortMouseDown?: (portIndex: number) => void;
+  /** Callback when a port mouse up */
+  onPortMouseUp?: (portIndex: number) => void;
+  /** Index of the currently active port if any */
+  activePortIndex?: number;
 }
 
 /**
@@ -41,10 +49,15 @@ export const PortIndicators: React.FC<PortIndicatorsProps> = ({
   cellSize,
   rotation = 0,
   showTooltips = true,
+  onPortClick,
+  onPortMouseDown,
+  onPortMouseUp,
+  activePortIndex,
 }) => {
   // Line dimensions
-  const lineLength = cellSize * 0.7;
-  const lineThickness = Math.max(2, cellSize * 0.1);
+  const lineLength = cellSize * 0.8;
+  const lineThickness = Math.max(4, cellSize * 0.15);
+  const hitAreaSize = cellSize * 0.9;
 
   return (
     <>
@@ -61,63 +74,120 @@ export const PortIndicators: React.FC<PortIndicatorsProps> = ({
         const cellCenterX = offsetX * cellSize + cellSize / 2;
         const cellCenterY = offsetY * cellSize + cellSize / 2;
 
-        let style: React.CSSProperties = {
+        const isActive = activePortIndex === index;
+
+        // Visual indicator style
+        let indicatorStyle: React.CSSProperties = {
           position: 'absolute',
-          backgroundColor: PORT_COLORS[port.type],
-          borderRadius: '1px',
-          zIndex: 10,
+          backgroundColor: isActive ? '#FFFFFF' : PORT_COLORS[port.type],
+          borderRadius: '2px',
+          boxShadow: isActive ? '0 0 12px #FFFFFF, 0 0 4px rgba(0,0,0,0.5)' : '0 0 4px rgba(0,0,0,0.3)',
+          transition: 'all 0.2s ease',
+          zIndex: 2,
+          pointerEvents: 'none', // Indicator doesn't catch events, hit area does
+        };
+
+        // Hit area style (larger transparent box for easier clicking)
+        let hitAreaStyle: React.CSSProperties = {
+          position: 'absolute',
+          width: hitAreaSize,
+          height: hitAreaSize,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          zIndex: 100, // Very high to be above everything else in the machine
+          // background: 'rgba(255,0,0,0.1)', // Debug: show hit area
         };
 
         // Position based on direction (port faces outward from this edge)
         switch (effectiveDirection) {
           case 'N': // Top edge
-            style = {
-              ...style,
+            indicatorStyle = {
+              ...indicatorStyle,
               width: lineLength,
               height: lineThickness,
               left: cellCenterX - lineLength / 2,
-              top: 0,
+              top: -lineThickness / 2,
+            };
+            hitAreaStyle = {
+              ...hitAreaStyle,
+              left: cellCenterX - hitAreaSize / 2,
+              top: -hitAreaSize / 2,
             };
             break;
           case 'E': // Right edge
-            style = {
-              ...style,
+            indicatorStyle = {
+              ...indicatorStyle,
               width: lineThickness,
               height: lineLength,
-              right: 0,
+              right: -lineThickness / 2,
               top: cellCenterY - lineLength / 2,
+            };
+            hitAreaStyle = {
+              ...hitAreaStyle,
+              right: -hitAreaSize / 2,
+              top: cellCenterY - hitAreaSize / 2,
             };
             break;
           case 'S': // Bottom edge
-            style = {
-              ...style,
+            indicatorStyle = {
+              ...indicatorStyle,
               width: lineLength,
               height: lineThickness,
               left: cellCenterX - lineLength / 2,
-              bottom: 0,
+              bottom: -lineThickness / 2,
+            };
+            hitAreaStyle = {
+              ...hitAreaStyle,
+              left: cellCenterX - hitAreaSize / 2,
+              bottom: -hitAreaSize / 2,
             };
             break;
           case 'W': // Left edge
-            style = {
-              ...style,
+            indicatorStyle = {
+              ...indicatorStyle,
               width: lineThickness,
               height: lineLength,
-              left: 0,
+              left: -lineThickness / 2,
               top: cellCenterY - lineLength / 2,
+            };
+            hitAreaStyle = {
+              ...hitAreaStyle,
+              left: -hitAreaSize / 2,
+              top: cellCenterY - hitAreaSize / 2,
             };
             break;
         }
 
         return (
-          <div
-            key={`port-${index}-${port.type}-${port.direction}`}
-            style={style}
-            title={
-              showTooltips
-                ? `${port.type === 'input' ? 'Input' : 'Output'} port (${port.direction})`
-                : undefined
-            }
-          />
+          <div key={`port-group-${index}`}>
+            {/* Visual Indicator */}
+            <div style={indicatorStyle} />
+            
+            {/* Hit Area */}
+            <div
+              style={hitAreaStyle}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onPortClick) onPortClick(index);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                if (onPortMouseDown) onPortMouseDown(index);
+              }}
+              onMouseUp={(e) => {
+                e.stopPropagation();
+                if (onPortMouseUp) onPortMouseUp(index);
+              }}
+              title={
+                showTooltips
+                  ? `${port.type === 'input' ? 'Input' : 'Output'} port (${port.direction})`
+                  : undefined
+              }
+              className="port-hit-area hover:scale-110 transition-transform"
+            />
+          </div>
         );
       })}
     </>
