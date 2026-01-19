@@ -52,6 +52,8 @@ const MachineCard: React.FC<MachineCardProps> = ({
   onClick,
   onEdit,
 }) => {
+  const selectMachineDef = useStore((state) => state.selectMachineDef);
+
   // Calculate a preview size that fits in the card (max 80px width)
   const maxPreviewSize = 80;
   const scale = Math.min(
@@ -62,10 +64,16 @@ const MachineCard: React.FC<MachineCardProps> = ({
   const previewHeight = machine.height * 20 * scale;
   const cellSizeInPreview = 20 * scale;
 
+  const handleMouseDown = () => {
+    // Start drag operation by selecting the machine
+    selectMachineDef(machine.id);
+  };
+
   return (
     <div
       onClick={onClick}
-      className={`machine-card w-full text-left cursor-pointer ${isSelected ? 'selected' : ''}`}
+      onMouseDown={handleMouseDown}
+      className={`machine-card w-full text-left cursor-pointer select-none ${isSelected ? 'selected' : ''}`}
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}

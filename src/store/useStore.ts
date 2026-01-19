@@ -52,6 +52,8 @@ interface FactoryState {
   selectedMachineDefId: string | null;
   /** Currently selected placed item ID (for inspection) */
   selectedGridItemId: string | null;
+  /** Currently selected placed item IDs (for multi-selection) */
+  selectedGridItemIds: string[];
   /** Currently selected connection ID */
   selectedConnectionId: string | null;
   /** Ghost placement preview state */
@@ -66,6 +68,16 @@ interface FactoryState {
   editingMachineId: string | null;
   /** Recipe being edited (null for new) */
   editingRecipeId: string | null;
+  /** Clipboard data for copy/paste */
+  clipboard: {
+    gridItems: Omit<GridItem, 'id'>[];
+    connections: Array<{
+      sourceIndex: number;
+      sourcePortIndex: number;
+      targetIndex: number;
+      targetPortIndex: number;
+    }>;
+  } | null;
 
   // Actions - Machine Definitions
   /** Add a new machine definition */
@@ -125,6 +137,10 @@ interface FactoryState {
   selectMachineDef: (id: string | null) => void;
   /** Select a placed grid item for inspection */
   selectGridItem: (id: string | null) => void;
+  /** Toggle a grid item in multi-selection */
+  toggleGridItemSelection: (id: string) => void;
+  /** Set multiple selected grid items */
+  setSelectedGridItems: (ids: string[]) => void;
   /** Select a connection for inspection/deletion */
   selectConnection: (id: string | null) => void;
   /** Update ghost placement preview */
@@ -133,6 +149,12 @@ interface FactoryState {
   setActivePort: (activePort: ActivePort | null) => void;
   /** Clear all selection state */
   clearSelection: () => void;
+
+  // Actions - Clipboard
+  /** Copy selected items to clipboard */
+  copyToClipboard: () => void;
+  /** Paste from clipboard at position */
+  pasteFromClipboard: (targetX: number, targetY: number) => void;
 
   // Actions - Modals
   /** Open the machine builder modal (optionally for editing) */
@@ -166,6 +188,7 @@ export const useStore = create<FactoryState>((set, get) => ({
   currentTool: 'select',
   selectedMachineDefId: null,
   selectedGridItemId: null,
+  selectedGridItemIds: [],
   selectedConnectionId: null,
   ghostPlacement: null,
   dragMoveState: null,
@@ -173,6 +196,7 @@ export const useStore = create<FactoryState>((set, get) => ({
   activeModal: null,
   editingMachineId: null,
   editingRecipeId: null,
+  clipboard: null,
 
   // Machine Definition Actions
   addMachineDef: (def) => {
@@ -305,11 +329,29 @@ export const useStore = create<FactoryState>((set, get) => ({
 
   // Connection Actions
   addConnection: (connection) => {
-    const id = generateId('conn');
-    set((state) => ({
-      connections: [...state.connections, { ...connection, id }],
-      activePort: null, // Reset after successful connection
-    }));
+    const state = get();
+
+    // Validate: check if source port already has a connection
+    const sourceHasConnection = state.connections.some(
+      (c) => c.sourceItemId === connection.sourceItemId && c.sourcePortIndex === connection.sourcePortIndex
+    );
+
+    // Validate: check if target port already has a connection
+    const targetHasConnection = state.connections.some(
+      (c) => c.targetItemId === connection.targetItemId && c.targetPortIndex === connection.targetPortIndex
+    );
+
+    // Only add connection if both ports are free
+    if (!sourceHasConnection && !targetHasConnection) {
+      const id = generateId('conn');
+      set((state) => ({
+        connections: [...state.connections, { ...connection, id }],
+        activePort: null, // Reset after successful connection
+      }));
+    } else {
+      // Still reset activePort even if connection failed
+      set({ activePort: null });
+    }
   },
 
   removeConnection: (id) => {
@@ -385,10 +427,38 @@ export const useStore = create<FactoryState>((set, get) => ({
   selectGridItem: (id) => {
     set({
       selectedGridItemId: id,
+      selectedGridItemIds: id ? [id] : [], // Sync with multi-selection
       selectedMachineDefId: null, // Clear machine def selection
       selectedConnectionId: null, // Clear connection selection
       currentTool: 'select',
       ghostPlacement: null,
+    });
+  },
+
+  toggleGridItemSelection: (id) => {
+    set((state) => {
+      const isSelected = state.selectedGridItemIds.includes(id);
+      const newSelection = isSelected
+        ? state.selectedGridItemIds.filter((itemId) => itemId !== id)
+        : [...state.selectedGridItemIds, id];
+
+      return {
+        selectedGridItemIds: newSelection,
+        selectedGridItemId: newSelection.length === 1 ? newSelection[0] : null,
+        selectedMachineDefId: null,
+        selectedConnectionId: null,
+        currentTool: 'select',
+      };
+    });
+  },
+
+  setSelectedGridItems: (ids) => {
+    set({
+      selectedGridItemIds: ids,
+      selectedGridItemId: ids.length === 1 ? ids[0] : null,
+      selectedMachineDefId: null,
+      selectedConnectionId: null,
+      currentTool: 'select',
     });
   },
 
@@ -414,12 +484,136 @@ export const useStore = create<FactoryState>((set, get) => ({
     set({
       selectedMachineDefId: null,
       selectedGridItemId: null,
+      selectedGridItemIds: [],
       selectedConnectionId: null,
       currentTool: 'select',
       ghostPlacement: null,
       dragMoveState: null,
       activePort: null,
     });
+  },
+
+  // Clipboard Actions
+  copyToClipboard: () => {
+    const state = get();
+    const { selectedGridItemIds, gridItems, connections } = state;
+
+    if (selectedGridItemIds.length === 0) return;
+
+    // Get selected items
+    const selectedItems = gridItems.filter((item) =>
+      selectedGridItemIds.includes(item.id)
+    );
+
+    // Create ID mapping (original ID -> index)
+    const itemIdToIndex = new Map<string, number>();
+    selectedItems.forEach((item, index) => {
+      itemIdToIndex.set(item.id, index);
+    });
+
+    // Get connections between selected items and convert to indices
+    const selectedConnections = connections
+      .filter((conn) =>
+        selectedGridItemIds.includes(conn.sourceItemId) &&
+        selectedGridItemIds.includes(conn.targetItemId)
+      )
+      .map((conn) => ({
+        sourceIndex: itemIdToIndex.get(conn.sourceItemId)!,
+        sourcePortIndex: conn.sourcePortIndex,
+        targetIndex: itemIdToIndex.get(conn.targetItemId)!,
+        targetPortIndex: conn.targetPortIndex,
+      }));
+
+    // Store in clipboard without IDs
+    set({
+      clipboard: {
+        gridItems: selectedItems.map(({ id, ...item }) => item),
+        connections: selectedConnections,
+      },
+    });
+  },
+
+  pasteFromClipboard: (targetX, targetY) => {
+    const state = get();
+    const { clipboard, isPlacementValid } = state;
+
+    if (!clipboard || clipboard.gridItems.length === 0) return;
+
+    // Find bounding box of clipboard items
+    let minX = Infinity, minY = Infinity;
+    clipboard.gridItems.forEach((item) => {
+      minX = Math.min(minX, item.x);
+      minY = Math.min(minY, item.y);
+    });
+
+    // Calculate offset to place at target position
+    const offsetX = targetX - minX;
+    const offsetY = targetY - minY;
+
+    // Try to place all items, finding closest valid position if needed
+    const newItems: GridItem[] = [];
+    const oldToNewIdMap = new Map<number, string>();
+
+    clipboard.gridItems.forEach((item, index) => {
+      let newX = item.x + offsetX;
+      let newY = item.y + offsetY;
+
+      // Try to find closest valid position if target is invalid
+      if (!isPlacementValid(item.machineDefId, newX, newY, item.rotation)) {
+        // Simple spiral search for valid position
+        let found = false;
+        for (let radius = 1; radius <= 20 && !found; radius++) {
+          for (let dx = -radius; dx <= radius && !found; dx++) {
+            for (let dy = -radius; dy <= radius && !found; dy++) {
+              if (Math.abs(dx) === radius || Math.abs(dy) === radius) {
+                const testX = newX + dx;
+                const testY = newY + dy;
+                if (isPlacementValid(item.machineDefId, testX, testY, item.rotation)) {
+                  newX = testX;
+                  newY = testY;
+                  found = true;
+                }
+              }
+            }
+          }
+        }
+        if (!found) return; // Skip this item if no valid position found
+      }
+
+      // Add the item to the list
+      const newId = generateId('item');
+      newItems.push({
+        ...item,
+        id: newId,
+        x: newX,
+        y: newY,
+      });
+      oldToNewIdMap.set(index, newId);
+    });
+
+    // Recreate connections with new IDs
+    const newConnections: Connection[] = [];
+    clipboard.connections.forEach((conn) => {
+      const newSourceId = oldToNewIdMap.get(conn.sourceIndex);
+      const newTargetId = oldToNewIdMap.get(conn.targetIndex);
+
+      if (newSourceId && newTargetId) {
+        newConnections.push({
+          id: generateId('conn'),
+          sourceItemId: newSourceId,
+          sourcePortIndex: conn.sourcePortIndex,
+          targetItemId: newTargetId,
+          targetPortIndex: conn.targetPortIndex,
+        });
+      }
+    });
+
+    // Update state once with all new items and connections
+    set((state) => ({
+      gridItems: [...state.gridItems, ...newItems],
+      connections: [...state.connections, ...newConnections],
+      selectedGridItemIds: newItems.map(item => item.id),
+    }));
   },
 
   // Modal Actions

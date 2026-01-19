@@ -52,7 +52,7 @@ interface PlacedMachineProps {
   /** Whether this machine is being dragged */
   isDragging: boolean;
   /** Click handler */
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
   /** Mouse down handler for drag initiation */
   onMouseDown: (e: React.MouseEvent) => void;
   /** Callback when a port is clicked */
@@ -116,7 +116,7 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
       onClick={(e) => {
         e.stopPropagation();
         if (!isDragging) {
-          onClick();
+          onClick(e);
         }
       }}
       onMouseDown={onMouseDown}
@@ -127,7 +127,7 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onClick();
+          onClick(e as any);
         }
       }}
     >
@@ -553,7 +553,7 @@ export const Grid: React.FC = () => {
   const selectedConnectionId = useStore((state) => state.selectedConnectionId);
 
   const selectedMachineDefId = useStore((state) => state.selectedMachineDefId);
-  const selectedGridItemId = useStore((state) => state.selectedGridItemId);
+  const selectedGridItemIds = useStore((state) => state.selectedGridItemIds);
   const currentTool = useStore((state) => state.currentTool);
   const getMachineDefById = useStore((state) => state.getMachineDefById);
   const isPlacementValid = useStore((state) => state.isPlacementValid);
@@ -824,6 +824,7 @@ export const Grid: React.FC = () => {
           const source = activePort.type === 'output' ? activePort : { itemId, portIndex, type: port.type };
           const target = activePort.type === 'input' ? activePort : { itemId, portIndex, type: port.type };
 
+          // Validation now happens in the store
           addConnection({
             sourceItemId: source.itemId,
             sourcePortIndex: source.portIndex,
@@ -913,11 +914,18 @@ export const Grid: React.FC = () => {
    * Handle machine click for selection
    */
   const handleMachineClick = useCallback(
-    (itemId: string) => {
+    (itemId: string, e: React.MouseEvent) => {
       if (currentTool === 'delete') {
         removeGridItem(itemId);
       } else {
-        selectGridItem(itemId);
+        // Check if Ctrl (or Cmd on Mac) is held
+        if (e.ctrlKey || e.metaKey) {
+          // Toggle this item in the selection
+          useStore.getState().toggleGridItemSelection(itemId);
+        } else {
+          // Regular click - select only this item
+          selectGridItem(itemId);
+        }
       }
     },
     [currentTool, removeGridItem, selectGridItem]
@@ -928,6 +936,23 @@ export const Grid: React.FC = () => {
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+C to copy
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        const { selectedGridItemIds, copyToClipboard } = useStore.getState();
+        if (selectedGridItemIds.length > 0) {
+          e.preventDefault();
+          copyToClipboard();
+        }
+      }
+
+      // Ctrl+V to paste
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        const { pasteFromClipboard } = useStore.getState();
+        // Paste at center of current view or at (0,0)
+        pasteFromClipboard(0, 0);
+      }
+
       // R to rotate ghost
       if (e.key === 'r' || e.key === 'R') {
         if (selectedMachineDefId && currentTool === 'place') {
@@ -1034,6 +1059,24 @@ export const Grid: React.FC = () => {
     return 'default';
   }, [currentTool, selectedMachineDefId, dragMoveState]);
 
+  /**
+   * Handle right-click to cancel/exit modes (like ESC)
+   */
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent context menu from appearing
+
+    if (dragMoveState) {
+      cancelDragMove();
+      isDraggingRef.current = false;
+      dragStartPosRef.current = null;
+    } else {
+      clearSelection();
+      setGhostRotation(0);
+      setDragMousePos(null);
+      setIsConnecting(false);
+    }
+  }, [dragMoveState, cancelDragMove, clearSelection]);
+
   return (
     <div
       ref={containerRef}
@@ -1042,6 +1085,7 @@ export const Grid: React.FC = () => {
       onMouseLeave={handleMouseLeave}
       onClick={handleGridClick}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
       style={{ cursor: cursorStyle }}
     >
       <div className="relative no-select" style={gridStyle}>
@@ -1099,9 +1143,9 @@ export const Grid: React.FC = () => {
               item={item}
               machineDef={machineDef}
               cellSize={CELL_SIZE}
-              isSelected={selectedGridItemId === item.id}
+              isSelected={selectedGridItemIds.includes(item.id)}
               isDragging={isDragging}
-              onClick={() => handleMachineClick(item.id)}
+              onClick={(e) => handleMachineClick(item.id, e)}
               onMouseDown={(e) => handleMachineMouseDown(e, item.id)}
               onPortMouseDown={(portIndex) => handlePortMouseDown(item.id, portIndex)}
               onPortMouseUp={(portIndex) => handlePortMouseUp(item.id, portIndex)}
