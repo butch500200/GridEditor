@@ -7,12 +7,31 @@
  */
 export const GRID_CONFIG = {
   /** Width of the grid in cells */
-  WIDTH: 50,
+  WIDTH: 40,
   /** Height of the grid in cells */
-  HEIGHT: 50,
+  HEIGHT: 40,
   /** Size of each cell in pixels */
   CELL_SIZE: 40,
 } as const;
+
+/**
+ * Automation Core configuration - the central power hub
+ */
+export const AUTOMATION_CORE_CONFIG = {
+  /** Width of the automation core in cells */
+  WIDTH: 9,
+  /** Height of the automation core in cells */
+  HEIGHT: 9,
+  /** X position (centered in grid) */
+  X: Math.floor((GRID_CONFIG.WIDTH - 9) / 2),
+  /** Y position (centered in grid) */
+  Y: Math.floor((GRID_CONFIG.HEIGHT - 9) / 2),
+} as const;
+
+/**
+ * Power system configuration
+ */
+export const POWER_RANGE = 3; // Maximum distance for power connections (Chebyshev distance)
 
 /**
  * Port indicator colors

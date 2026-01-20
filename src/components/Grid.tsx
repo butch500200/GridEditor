@@ -17,7 +17,7 @@ import {
   useGhostPlacement,
   useDragMoveState,
 } from '../store/useStore';
-import { GRID_CONFIG } from '../constants';
+import { GRID_CONFIG, AUTOMATION_CORE_CONFIG, POWER_RANGE } from '../constants';
 import {
   getEffectiveDimensions,
   getRotatedPortPosition,
@@ -51,6 +51,8 @@ interface PlacedMachineProps {
   isSelected: boolean;
   /** Whether this machine is being dragged */
   isDragging: boolean;
+  /** Whether this machine is powered (or pylon is connected) */
+  isPowered: boolean;
   /** Click handler */
   onClick: (e: React.MouseEvent) => void;
   /** Mouse down handler for drag initiation */
@@ -77,6 +79,7 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
   cellSize,
   isSelected,
   isDragging,
+  isPowered,
   onClick,
   onMouseDown,
   onPortClick,
@@ -91,6 +94,20 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
     item.rotation
   );
 
+  // Determine border style based on state
+  function getBorderStyle(): string {
+    if (isDragging) {
+      return '2px dashed rgba(255,255,255,0.4)';
+    }
+    if (isSelected) {
+      return '2px solid #F5C518';
+    }
+    return '1px solid rgba(255,255,255,0.2)';
+  }
+
+  // Determine opacity: dragging (0.5), unpowered/unconnected (0.4), powered (1)
+  const opacity = isDragging ? 0.5 : isPowered ? 1 : 0.4;
+
   const style: React.CSSProperties = {
     position: 'absolute',
     left: item.x * cellSize,
@@ -98,16 +115,12 @@ const PlacedMachine: React.FC<PlacedMachineProps> = ({
     width: effectiveWidth * cellSize,
     height: effectiveHeight * cellSize,
     backgroundColor: isDragging ? `${machineDef.color}40` : `${machineDef.color}CC`,
-    border: isDragging
-      ? '2px dashed rgba(255,255,255,0.4)'
-      : isSelected
-        ? '2px solid #F5C518'
-        : '1px solid rgba(255,255,255,0.2)',
+    border: getBorderStyle(),
     boxShadow: isSelected && !isDragging ? '0 0 15px rgba(245, 197, 24, 0.5)' : 'none',
     borderRadius: '4px',
     cursor: isDragging ? 'grabbing' : 'grab',
-    transition: isDragging ? 'none' : 'box-shadow 0.2s, border 0.2s',
-    opacity: isDragging ? 0.5 : 1,
+    transition: isDragging ? 'none' : 'box-shadow 0.2s, border 0.2s, opacity 0.3s',
+    opacity,
   };
 
   return (
@@ -234,6 +247,62 @@ interface DragMoveGhostProps {
 }
 
 /**
+ * @description Renders a single ghost item for drag move preview
+ */
+function DragMoveGhostItem({
+  x,
+  y,
+  machineDef,
+  rotation,
+  cellSize,
+  isValid,
+}: {
+  x: number;
+  y: number;
+  machineDef: MachineDef;
+  rotation: Rotation;
+  cellSize: number;
+  isValid: boolean;
+}): JSX.Element {
+  const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
+    machineDef.width,
+    machineDef.height,
+    rotation
+  );
+
+  const baseColor = isValid ? 'rgba(72, 207, 173, 0.7)' : 'rgba(255, 100, 100, 0.7)';
+  const borderColor = isValid ? '#48CFAD' : '#FF6464';
+
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    left: x * cellSize,
+    top: y * cellSize,
+    width: effectiveWidth * cellSize,
+    height: effectiveHeight * cellSize,
+    backgroundColor: baseColor,
+    border: `2px dashed ${borderColor}`,
+    borderRadius: '4px',
+    pointerEvents: 'none',
+    zIndex: 100,
+  };
+
+  return (
+    <div style={style} className="flex items-center justify-center">
+      <PortIndicators
+        ports={machineDef.ports}
+        machineWidth={machineDef.width}
+        machineHeight={machineDef.height}
+        cellSize={cellSize}
+        rotation={rotation}
+      />
+      <span className="text-white/80 text-xs font-medium">
+        {machineDef.name}
+      </span>
+    </div>
+  );
+}
+
+/**
  * @description Renders the ghost preview while dragging a machine to move it
  *
  * Shows where the machine will land with valid (green) or invalid (red) feedback.
@@ -247,93 +316,39 @@ const DragMoveGhost: React.FC<DragMoveGhostProps> = ({
   cellSize,
 }) => {
   const getMachineDefById = useStore((state) => state.getMachineDefById);
-
-  // Calculate effective dimensions based on rotation
-  const { width: effectiveWidth, height: effectiveHeight } = getEffectiveDimensions(
-    machineDef.width,
-    machineDef.height,
-    dragState.currentRotation
-  );
-
-  const baseColor = dragState.isValid ? 'rgba(72, 207, 173, 0.7)' : 'rgba(255, 100, 100, 0.7)';
-  const borderColor = dragState.isValid ? '#48CFAD' : '#FF6464';
-
-  const style: React.CSSProperties = {
-    position: 'absolute',
-    left: dragState.currentX * cellSize,
-    top: dragState.currentY * cellSize,
-    width: effectiveWidth * cellSize,
-    height: effectiveHeight * cellSize,
-    backgroundColor: baseColor,
-    border: `2px dashed ${borderColor}`,
-    borderRadius: '4px',
-    pointerEvents: 'none',
-    zIndex: 100,
-  };
+  const gridItems = useStore((state) => state.gridItems);
 
   return (
     <>
       {/* Primary dragged machine ghost */}
-      <div style={style} className="flex items-center justify-center">
-        {/* Port indicators on drag ghost */}
-        <PortIndicators
-          ports={machineDef.ports}
-          machineWidth={machineDef.width}
-          machineHeight={machineDef.height}
-          cellSize={cellSize}
-          rotation={dragState.currentRotation}
-        />
-        <span className="text-white/80 text-xs font-medium">
-          {machineDef.name}
-        </span>
-      </div>
+      <DragMoveGhostItem
+        x={dragState.currentX}
+        y={dragState.currentY}
+        machineDef={machineDef}
+        rotation={dragState.currentRotation}
+        cellSize={cellSize}
+        isValid={dragState.isValid}
+      />
 
       {/* Additional dragged machines ghosts (multi-selection) */}
       {dragState.draggedItems?.map((draggedItem) => {
-        const itemMachineDef = getMachineDefById(draggedItem.id.split('-')[0] || '');
-        if (!itemMachineDef) {
-          // Try to get from gridItems
-          const gridItems = useStore.getState().gridItems;
-          const item = gridItems.find(i => i.id === draggedItem.id);
-          if (!item) return null;
-          const def = getMachineDefById(item.machineDefId);
-          if (!def) return null;
+        const item = gridItems.find(i => i.id === draggedItem.id);
+        if (!item) return null;
 
-          const { width: w, height: h } = getEffectiveDimensions(
-            def.width,
-            def.height,
-            draggedItem.originalRotation
-          );
+        const def = getMachineDefById(item.machineDefId);
+        if (!def) return null;
 
-          const itemStyle: React.CSSProperties = {
-            position: 'absolute',
-            left: (dragState.currentX + draggedItem.offsetX) * cellSize,
-            top: (dragState.currentY + draggedItem.offsetY) * cellSize,
-            width: w * cellSize,
-            height: h * cellSize,
-            backgroundColor: baseColor,
-            border: `2px dashed ${borderColor}`,
-            borderRadius: '4px',
-            pointerEvents: 'none',
-            zIndex: 100,
-          };
-
-          return (
-            <div key={draggedItem.id} style={itemStyle} className="flex items-center justify-center">
-              <PortIndicators
-                ports={def.ports}
-                machineWidth={def.width}
-                machineHeight={def.height}
-                cellSize={cellSize}
-                rotation={draggedItem.originalRotation}
-              />
-              <span className="text-white/80 text-xs font-medium">
-                {def.name}
-              </span>
-            </div>
-          );
-        }
-        return null;
+        return (
+          <DragMoveGhostItem
+            key={draggedItem.id}
+            x={dragState.currentX + draggedItem.offsetX}
+            y={dragState.currentY + draggedItem.offsetY}
+            machineDef={def}
+            rotation={draggedItem.originalRotation}
+            cellSize={cellSize}
+            isValid={dragState.isValid}
+          />
+        );
       })}
     </>
   );
@@ -605,6 +620,8 @@ export const Grid: React.FC = () => {
   const connections = useStore((state) => state.connections);
   const activePort = useStore((state) => state.activePort);
   const selectedConnectionId = useStore((state) => state.selectedConnectionId);
+  const powerState = useStore((state) => state.powerState);
+  const updatePowerState = useStore((state) => state.updatePowerState);
 
   const selectedMachineDefId = useStore((state) => state.selectedMachineDefId);
   const selectedGridItemIds = useStore((state) => state.selectedGridItemIds);
@@ -659,6 +676,11 @@ export const Grid: React.FC = () => {
       useStore.getState().getRecipeById
     );
   }, [connections, gridItems, getMachineDefById]);
+
+  // Initialize power state on mount
+  useEffect(() => {
+    updatePowerState();
+  }, [updatePowerState]);
 
   // Track current ghost rotation locally for keyboard control
   const [ghostRotation, setGhostRotation] = useState<Rotation>(0);
@@ -1052,6 +1074,28 @@ export const Grid: React.FC = () => {
           setIsConnecting(false);
         }
       }
+
+      // Delete or Backspace to remove selected items
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const { selectedGridItemIds, removeSelectedGridItems } = useStore.getState();
+        if (selectedGridItemIds.length > 0) {
+          e.preventDefault();
+          removeSelectedGridItems();
+        }
+      }
+
+      // P to toggle pylon placement mode
+      if (e.key === 'p' || e.key === 'P') {
+        const { selectedMachineDefId, selectMachineDef, setCurrentTool } = useStore.getState();
+        if (selectedMachineDefId === 'pylon') {
+          // Toggle off pylon mode
+          selectMachineDef(null);
+        } else {
+          // Enter pylon mode
+          selectMachineDef('pylon');
+          setCurrentTool('place');
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1122,16 +1166,10 @@ export const Grid: React.FC = () => {
   /**
    * Cursor style based on current tool and drag state
    */
-  const cursorStyle = useMemo(() => {
-    if (dragMoveState) {
-      return 'grabbing';
-    }
-    if (currentTool === 'place' && selectedMachineDefId) {
-      return 'crosshair';
-    }
-    if (currentTool === 'delete') {
-      return 'not-allowed';
-    }
+  const cursorStyle = useMemo((): string => {
+    if (dragMoveState) return 'grabbing';
+    if (currentTool === 'place' && selectedMachineDefId) return 'crosshair';
+    if (currentTool === 'delete') return 'not-allowed';
     return 'default';
   }, [currentTool, selectedMachineDefId, dragMoveState]);
 
@@ -1205,15 +1243,119 @@ export const Grid: React.FC = () => {
             )}
         </svg>
 
+        {/* Render Automation Core */}
+        <div
+          style={{
+            position: 'absolute',
+            left: AUTOMATION_CORE_CONFIG.X * CELL_SIZE,
+            top: AUTOMATION_CORE_CONFIG.Y * CELL_SIZE,
+            width: AUTOMATION_CORE_CONFIG.WIDTH * CELL_SIZE,
+            height: AUTOMATION_CORE_CONFIG.HEIGHT * CELL_SIZE,
+            backgroundColor: '#2D1F47',
+            border: '2px solid #6B4C9A',
+            borderRadius: 4,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 'bold',
+              color: '#A78BFA',
+              textAlign: 'center',
+            }}
+          >
+            Automation
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: '#8B5CF6',
+              textAlign: 'center',
+            }}
+          >
+            Core
+          </div>
+        </div>
+
+        {/* Power visualization: Lines and range indicators for pylons */}
+        {(() => {
+          const coreCenterX = (AUTOMATION_CORE_CONFIG.X + AUTOMATION_CORE_CONFIG.WIDTH / 2) * CELL_SIZE;
+          const coreCenterY = (AUTOMATION_CORE_CONFIG.Y + AUTOMATION_CORE_CONFIG.HEIGHT / 2) * CELL_SIZE;
+          const rangeRadius = (POWER_RANGE + 2) * CELL_SIZE; // Power range + 1 cell from pylon center to edge + 1 for visual clarity
+
+          return gridItems.map((item) => {
+            if (item.machineDefId !== 'pylon') return null;
+
+            const pylonCenterX = (item.x + 1) * CELL_SIZE;
+            const pylonCenterY = (item.y + 1) * CELL_SIZE;
+            const isConnected = powerState.connectedPylonIds.has(item.id);
+
+            return (
+              <React.Fragment key={`power-viz-${item.id}`}>
+                {/* Power line from core to connected pylon */}
+                {isConnected && (
+                  <svg
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      pointerEvents: 'none',
+                      zIndex: 1,
+                    }}
+                  >
+                    <line
+                      x1={coreCenterX}
+                      y1={coreCenterY}
+                      x2={pylonCenterX}
+                      y2={pylonCenterY}
+                      stroke="#F5C518"
+                      strokeWidth="2"
+                      strokeOpacity="0.5"
+                    />
+                  </svg>
+                )}
+                {/* Range indicator */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: pylonCenterX - rangeRadius,
+                    top: pylonCenterY - rangeRadius,
+                    width: rangeRadius * 2,
+                    height: rangeRadius * 2,
+                    border: '2px dashed rgba(245, 197, 24, 0.3)',
+                    borderRadius: '4px',
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }}
+                />
+              </React.Fragment>
+            );
+          });
+        })()}
+
         {/* Render placed machines */}
         {gridItems.map((item) => {
           const machineDef = getMachineDefById(item.machineDefId);
           if (!machineDef) return null;
 
           // Check if this item is being dragged (primary or in multi-selection)
-          const isDragging = dragMoveState?.gridItemId === item.id ||
-            dragMoveState?.draggedItems?.some(d => d.id === item.id);
+          const isDragging: boolean = dragMoveState?.gridItemId === item.id ||
+            (dragMoveState?.draggedItems?.some(d => d.id === item.id) ?? false);
           const activePortForThisItem = activePort?.itemId === item.id ? activePort.portIndex : undefined;
+
+          // Determine if this item is powered
+          const isPowered: boolean =
+            machineDef.id === 'pylon'
+              ? powerState.connectedPylonIds.has(item.id)
+              : powerState.poweredMachineIds.has(item.id);
 
           return (
             <PlacedMachine
@@ -1223,6 +1365,7 @@ export const Grid: React.FC = () => {
               cellSize={CELL_SIZE}
               isSelected={selectedGridItemIds.includes(item.id)}
               isDragging={isDragging}
+              isPowered={isPowered}
               onClick={(e) => handleMachineClick(item.id, e)}
               onMouseDown={(e) => handleMachineMouseDown(e, item.id)}
               onPortMouseDown={(portIndex) => handlePortMouseDown(item.id, portIndex)}

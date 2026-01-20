@@ -7,6 +7,7 @@
 
 import React, { useEffect } from 'react';
 import { Sidebar, Inspector, Grid, MachineBuilder, RecipeBuilder } from './components';
+import { PowerDisplay } from './components/PowerDisplay';
 import { useStore, useActiveModal } from './store/useStore';
 import { GRID_CONFIG } from './constants';
 import { initializeSampleData } from './data/sampleData';
@@ -80,6 +81,7 @@ const StatusBar: React.FC = () => {
       <div className="flex-1" />
 
       <div className="flex items-center gap-4 text-endfield-muted">
+        <PowerDisplay />
         <span>Machines: {gridItems.length}</span>
         <span>Grid: {GRID_CONFIG.WIDTH}x{GRID_CONFIG.HEIGHT}</span>
         <span>Cell: {GRID_CONFIG.CELL_SIZE}px</span>

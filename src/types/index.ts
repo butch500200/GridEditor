@@ -63,6 +63,8 @@ export interface MachineDef {
   height: number;
   color: string;
   ports: MachinePort[];
+  /** Power consumption in kW (default: 0) */
+  powerConsumption?: number;
 }
 
 /**
@@ -261,4 +263,15 @@ export interface MultiGhostPlacement {
   currentX: number;
   currentY: number;
   isValid: boolean;
+}
+
+/**
+ * @description Represents the central automation core on the grid
+ * This is the power source that cannot be moved or selected
+ */
+export interface AutomationCore {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }

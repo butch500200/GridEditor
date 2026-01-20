@@ -89,22 +89,22 @@ describe('useStore', () => {
       const { isPlacementValid } = useStore.getState();
       // Valid
       expect(isPlacementValid('small', 0, 0, 0)).toBe(true);
-      expect(isPlacementValid('small', 49, 49, 0)).toBe(true);
-      
+      expect(isPlacementValid('small', 39, 39, 0)).toBe(true);
+
       // Invalid (out of bounds)
       expect(isPlacementValid('small', -1, 0, 0)).toBe(false);
-      expect(isPlacementValid('small', 50, 0, 0)).toBe(false);
-      expect(isPlacementValid('small', 0, 50, 0)).toBe(false);
+      expect(isPlacementValid('small', 40, 0, 0)).toBe(false);
+      expect(isPlacementValid('small', 0, 40, 0)).toBe(false);
     });
 
     it('should validate placement with rotation', () => {
       const { isPlacementValid } = useStore.getState();
-      // 2x1 machine at 49,0 rotated 90deg becomes 1x2.
-      // At 49,0 with 90deg rotation, it occupies (49,0) and (49,1). Valid.
-      expect(isPlacementValid('rect', 49, 0, 90)).toBe(true);
-      
-      // 2x1 machine at 49,0 with 0deg rotation occupies (49,0) and (50,0). Invalid.
-      expect(isPlacementValid('rect', 49, 0, 0)).toBe(false);
+      // 2x1 machine at 39,0 rotated 90deg becomes 1x2.
+      // At 39,0 with 90deg rotation, it occupies (39,0) and (39,1). Valid.
+      expect(isPlacementValid('rect', 39, 0, 90)).toBe(true);
+
+      // 2x1 machine at 39,0 with 0deg rotation occupies (39,0) and (40,0). Invalid.
+      expect(isPlacementValid('rect', 39, 0, 0)).toBe(false);
     });
 
     it('should detect collisions between machines', () => {

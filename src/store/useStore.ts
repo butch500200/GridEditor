@@ -10,9 +10,10 @@
  */
 
 import { create } from 'zustand';
-import { GRID_CONFIG } from '../constants';
+import { GRID_CONFIG, AUTOMATION_CORE_CONFIG } from '../constants';
 import { generateId } from '../utils/idUtils';
 import { getEffectiveDimensions } from '../utils/gridUtils';
+import { calculatePoweredMachines, PowerResult } from '../utils/powerUtils';
 import type {
   MachineDef,
   Recipe,
@@ -25,6 +26,7 @@ import type {
   DragMoveState,
   Connection,
   ActivePort,
+  AutomationCore,
 } from '../types';
 
 /**
@@ -45,6 +47,10 @@ interface FactoryState {
   gridItems: GridItem[];
   /** Belt connections between machines */
   connections: Connection[];
+  /** The central automation core (power source) */
+  automationCore: AutomationCore;
+  /** Power system state (connected pylons and powered machines) */
+  powerState: PowerResult;
 
   // UI State
   /** Currently selected tool */
@@ -109,6 +115,8 @@ interface FactoryState {
   placeGridItem: (item: Omit<GridItem, 'id'>) => string;
   /** Remove a machine from the grid */
   removeGridItem: (id: string) => void;
+  /** Remove all selected grid items */
+  removeSelectedGridItems: () => void;
   /** Update a grid item */
   updateGridItem: (id: string, updates: Partial<GridItem>) => void;
   /** Check if a position is valid for placement */
@@ -188,6 +196,10 @@ interface FactoryState {
   completeDragMove: () => void;
   /** Cancel the drag move, returning to original position */
   cancelDragMove: () => void;
+
+  // Actions - Power System
+  /** Calculate and update power state */
+  updatePowerState: () => void;
 }
 
 export const useStore = create<FactoryState>((set, get) => ({
@@ -196,6 +208,16 @@ export const useStore = create<FactoryState>((set, get) => ({
   recipes: [],
   gridItems: [],
   connections: [],
+  automationCore: {
+    x: AUTOMATION_CORE_CONFIG.X,
+    y: AUTOMATION_CORE_CONFIG.Y,
+    width: AUTOMATION_CORE_CONFIG.WIDTH,
+    height: AUTOMATION_CORE_CONFIG.HEIGHT,
+  },
+  powerState: {
+    connectedPylonIds: new Set<string>(),
+    poweredMachineIds: new Set<string>(),
+  },
 
   // Initial UI State
   currentTool: 'select',
@@ -298,6 +320,9 @@ export const useStore = create<FactoryState>((set, get) => ({
       gridItems: [...state.gridItems, newItem],
     }));
 
+    // Update power state after placing item
+    get().updatePowerState();
+
     return id;
   },
 
@@ -312,6 +337,30 @@ export const useStore = create<FactoryState>((set, get) => ({
       selectedGridItemId:
         state.selectedGridItemId === id ? null : state.selectedGridItemId,
     }));
+
+    // Update power state after removing item
+    get().updatePowerState();
+  },
+
+  removeSelectedGridItems: () => {
+    set((state) => {
+      const idsToRemove = state.selectedGridItemIds;
+      if (idsToRemove.length === 0) return state;
+
+      return {
+        gridItems: state.gridItems.filter((item) => !idsToRemove.includes(item.id)),
+        connections: state.connections.filter(
+          (conn) =>
+            !idsToRemove.includes(conn.sourceItemId) &&
+            !idsToRemove.includes(conn.targetItemId)
+        ),
+        selectedGridItemIds: [],
+        selectedGridItemId: null,
+      };
+    });
+
+    // Update power state after removing items
+    get().updatePowerState();
   },
 
   updateGridItem: (id, updates) => {
@@ -320,6 +369,9 @@ export const useStore = create<FactoryState>((set, get) => ({
         item.id === id ? { ...item, ...updates } : item
       ),
     }));
+
+    // Update power state after updating item (position changes affect power)
+    get().updatePowerState();
   },
 
   getMachineBoundingBox: (machineDefId, x, y, rotation) => {
@@ -390,6 +442,22 @@ export const useStore = create<FactoryState>((set, get) => ({
     ) {
       return false;
     }
+
+    // Check collision with automation core
+    const core = state.automationCore;
+    const coreBox = {
+      minX: core.x,
+      minY: core.y,
+      maxX: core.x + core.width - 1,
+      maxY: core.y + core.height - 1,
+    };
+    const hasAutomationCoreCollision = !(
+      boundingBox.maxX < coreBox.minX ||
+      boundingBox.minX > coreBox.maxX ||
+      boundingBox.maxY < coreBox.minY ||
+      boundingBox.minY > coreBox.maxY
+    );
+    if (hasAutomationCoreCollision) return false;
 
     // Check collision with existing items
     for (const item of state.gridItems) {
@@ -700,11 +768,10 @@ export const useStore = create<FactoryState>((set, get) => ({
 
     const { machines, currentX, currentY } = state.multiGhostPlacement;
 
-    // Place all machines
-    const newItems: GridItem[] = [];
-    const newItemIndices: number[] = [];
+    // Place all machines and collect their new IDs
+    const newItemIds: string[] = [];
 
-    machines.forEach((machine, index) => {
+    machines.forEach((machine) => {
       const newId = state.placeGridItem({
         machineDefId: machine.machineDefId,
         x: currentX + machine.offsetX,
@@ -712,20 +779,14 @@ export const useStore = create<FactoryState>((set, get) => ({
         rotation: machine.rotation,
         assignedRecipeId: machine.assignedRecipeId,
       });
-      newItemIndices.push(index);
+      newItemIds.push(newId);
     });
 
     // Recreate connections if any
     if (state.clipboard?.connections) {
-      const allItems = get().gridItems;
-      const newItemsStartIndex = allItems.length - machines.length;
-
       const oldToNewIdMap = new Map<number, string>();
       machines.forEach((_, index) => {
-        const newItem = allItems[newItemsStartIndex + index];
-        if (newItem) {
-          oldToNewIdMap.set(index, newItem.id);
-        }
+        oldToNewIdMap.set(index, newItemIds[index]);
       });
 
       const newConnections: Connection[] = [];
@@ -749,10 +810,12 @@ export const useStore = create<FactoryState>((set, get) => ({
       }));
     }
 
-    // Clear multi-ghost placement
+    // Clear multi-ghost placement and select the newly placed items
     set({
       multiGhostPlacement: null,
       currentTool: 'select',
+      selectedGridItemIds: newItemIds,
+      selectedGridItemId: newItemIds.length === 1 ? newItemIds[0] : null,
     });
   },
 
@@ -946,6 +1009,22 @@ export const useStore = create<FactoryState>((set, get) => ({
       dragMoveState: null,
       selectedGridItemId: state.dragMoveState.gridItemId, // Select the item that was being moved
     });
+  },
+
+  // Power System Actions
+  updatePowerState: () => {
+    const state = get();
+    const pylons = state.gridItems.filter(item => item.machineDefId === 'pylon');
+    const machines = state.gridItems.filter(item => item.machineDefId !== 'pylon');
+
+    const powerState = calculatePoweredMachines(
+      pylons,
+      machines,
+      state.automationCore,
+      state.getMachineDefById
+    );
+
+    set({ powerState });
   },
 }));
 

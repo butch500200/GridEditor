@@ -107,3 +107,14 @@ We are building a **web-based visual planning tool** for "Enfield AIC". The goal
 2.  Draw bezier curves or straight lines between connected ports, These are to simulate belts between the machines. These should follow the grids  [ ]
 
 ---
+
+### Phase 5
+Always use Test Driven Development (TDD) to build the features.
+1. Make the grid a 40*40 grid.
+2. Multiselector need to keep the selected items still selected after placed.
+3. Pressing the backspace or delete button should remove selected machines and selected belts
+4. Add a static 9*9 automation core in the center of the grid.
+5. Need to implement electricity, pylons will power the machines. The electricity souce is the automation core, and pylons connect to any pylon or electic souce if its within 4 spaces, and powers any machies within 4 spaces in any direction including diagonals.
+6. Powered machines will have an icon indicating power
+7. Different machines will pull different amounts of power. Must display total power needed
+8. Have a hotkey of p to start placing power pylons

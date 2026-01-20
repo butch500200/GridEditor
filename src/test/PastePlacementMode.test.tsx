@@ -118,7 +118,7 @@ describe('Paste as Placement Mode', () => {
     expect(state.multiGhostPlacement?.isValid).toBe(false);
 
     // Try valid position
-    updateMultiGhostPlacement(20, 20);
+    updateMultiGhostPlacement(25, 25);
 
     state = useStore.getState();
     // Should be valid now
@@ -148,7 +148,7 @@ describe('Paste as Placement Mode', () => {
 
     // Paste and place
     pasteSelection();
-    updateMultiGhostPlacement(20, 20);
+    updateMultiGhostPlacement(25, 25);
     confirmMultiGhostPlacement();
 
     const state = useStore.getState();
@@ -157,16 +157,16 @@ describe('Paste as Placement Mode', () => {
     expect(state.gridItems).toHaveLength(4);
 
     // New machines should be at correct positions with correct properties
-    const newItems = state.gridItems.filter(item => item.x >= 20);
+    const newItems = state.gridItems.filter(item => item.x >= 25);
     expect(newItems).toHaveLength(2);
 
     // Check offsets are preserved (item2 was 5 units to the right)
     const newItem1 = newItems.find(item => item.machineDefId === 'drill');
     const newItem2 = newItems.find(item => item.machineDefId === 'smelter');
-    expect(newItem1?.x).toBe(20);
-    expect(newItem1?.y).toBe(20);
-    expect(newItem2?.x).toBe(25); // 20 + 5 offset
-    expect(newItem2?.y).toBe(20);
+    expect(newItem1?.x).toBe(25);
+    expect(newItem1?.y).toBe(25);
+    expect(newItem2?.x).toBe(30); // 25 + 5 offset
+    expect(newItem2?.y).toBe(25);
     expect(newItem2?.rotation).toBe(90);
 
     // Recipe should be preserved
@@ -208,11 +208,11 @@ describe('Paste as Placement Mode', () => {
   it('should not place when position is invalid', () => {
     const { placeGridItem, selectGridItem, copySelection, pasteSelection, updateMultiGhostPlacement, confirmMultiGhostPlacement } = useStore.getState();
 
-    // Add obstacle and machine to copy
+    // Add obstacle outside automation core (core is at 15-23)
     placeGridItem({
       machineDefId: 'drill',
-      x: 20,
-      y: 20,
+      x: 30,
+      y: 30,
       rotation: 0,
       assignedRecipeId: null,
     });
@@ -228,7 +228,7 @@ describe('Paste as Placement Mode', () => {
 
     // Paste and try to place over obstacle
     pasteSelection();
-    updateMultiGhostPlacement(20, 20);
+    updateMultiGhostPlacement(30, 30);
     confirmMultiGhostPlacement();
 
     const state = useStore.getState();
@@ -238,5 +238,81 @@ describe('Paste as Placement Mode', () => {
 
     // Should still be in placement mode
     expect(state.multiGhostPlacement).toBeTruthy();
+  });
+
+  it('should select all newly placed machines after confirming paste', () => {
+    const { placeGridItem, setSelectedGridItems, copySelection, pasteSelection, updateMultiGhostPlacement, confirmMultiGhostPlacement } = useStore.getState();
+
+    // Add and copy two machines
+    const item1Id = placeGridItem({
+      machineDefId: 'drill',
+      x: 5,
+      y: 5,
+      rotation: 0,
+      assignedRecipeId: null,
+    });
+    const item2Id = placeGridItem({
+      machineDefId: 'smelter',
+      x: 10,
+      y: 5,
+      rotation: 0,
+      assignedRecipeId: null,
+    });
+    setSelectedGridItems([item1Id, item2Id]);
+    copySelection();
+
+    // Paste and place
+    pasteSelection();
+    updateMultiGhostPlacement(25, 25);
+    confirmMultiGhostPlacement();
+
+    const state = useStore.getState();
+
+    // Should have 4 machines total now
+    expect(state.gridItems).toHaveLength(4);
+
+    // Newly pasted machines should be selected
+    expect(state.selectedGridItemIds).toHaveLength(2);
+
+    // The selected IDs should be the new machines (not the originals)
+    expect(state.selectedGridItemIds).not.toContain(item1Id);
+    expect(state.selectedGridItemIds).not.toContain(item2Id);
+
+    // All selected items should exist in gridItems
+    state.selectedGridItemIds.forEach(id => {
+      expect(state.gridItems.find(item => item.id === id)).toBeDefined();
+    });
+  });
+
+  it('should have newly pasted machines selected for immediate drag', () => {
+    const { placeGridItem, selectGridItem, copySelection, pasteSelection, updateMultiGhostPlacement, confirmMultiGhostPlacement } = useStore.getState();
+
+    // Add and copy a single machine
+    const originalId = placeGridItem({
+      machineDefId: 'drill',
+      x: 5,
+      y: 5,
+      rotation: 0,
+      assignedRecipeId: null,
+    });
+    selectGridItem(originalId);
+    copySelection();
+
+    // Paste and place
+    pasteSelection();
+    updateMultiGhostPlacement(25, 25);
+    confirmMultiGhostPlacement();
+
+    const state = useStore.getState();
+
+    // Should have 2 machines total
+    expect(state.gridItems).toHaveLength(2);
+
+    // The new machine should be selected (not the original)
+    expect(state.selectedGridItemIds).toHaveLength(1);
+    expect(state.selectedGridItemIds[0]).not.toBe(originalId);
+
+    // If single selection, selectedGridItemId should also be set
+    expect(state.selectedGridItemId).toBe(state.selectedGridItemIds[0]);
   });
 });

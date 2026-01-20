@@ -9,6 +9,20 @@
 import type { MachineDef, Recipe } from '../types';
 
 /**
+ * Power Pylon definition - used for power distribution
+ * Pylons are 2x2 structures that relay power from the Automation Core
+ */
+export const PYLON_DEF: MachineDef = {
+  id: 'pylon',
+  name: 'Power Pylon',
+  width: 2,
+  height: 2,
+  color: '#F5C518', // Yellow (Endfield theme)
+  ports: [],
+  powerConsumption: 0,
+};
+
+/**
  * Sample machine definitions representing various factory equipment
  *
  * Color scheme follows Endfield aesthetic:
@@ -25,6 +39,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 2,
     height: 2,
     color: '#5D9CEC',
+    powerConsumption: 2,
     ports: [
       { type: 'output', offsetX: 1, offsetY: 1, direction: 'E' },
     ],
@@ -35,6 +50,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 2,
     height: 3,
     color: '#FC6E51',
+    powerConsumption: 4,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 1, direction: 'W' },
       { type: 'output', offsetX: 1, offsetY: 1, direction: 'E' },
@@ -46,6 +62,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 3,
     height: 3,
     color: '#48CFAD',
+    powerConsumption: 6,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'W' },
       { type: 'input', offsetX: 0, offsetY: 2, direction: 'W' },
@@ -58,6 +75,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 2,
     height: 2,
     color: '#A0D468',
+    powerConsumption: 3,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'W' },
       { type: 'output', offsetX: 1, offsetY: 1, direction: 'E' },
@@ -70,6 +88,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 4,
     height: 3,
     color: '#AC92EC',
+    powerConsumption: 8,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 1, direction: 'W' },
       { type: 'output', offsetX: 3, offsetY: 0, direction: 'E' },
@@ -82,6 +101,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 3,
     height: 4,
     color: '#967ADC',
+    powerConsumption: 7,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 1, direction: 'W' },
       { type: 'input', offsetX: 0, offsetY: 2, direction: 'W' },
@@ -96,6 +116,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 1,
     height: 1,
     color: '#37BC9B',
+    powerConsumption: 1,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'W' },
       { type: 'output', offsetX: 0, offsetY: 0, direction: 'N' },
@@ -108,6 +129,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 1,
     height: 1,
     color: '#3BAFDA',
+    powerConsumption: 1,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'N' },
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'S' },
@@ -121,6 +143,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 2,
     height: 2,
     color: '#656D78',
+    powerConsumption: 1,
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'W' },
       { type: 'output', offsetX: 1, offsetY: 1, direction: 'E' },
@@ -133,6 +156,7 @@ export const sampleMachineDefs: MachineDef[] = [
     width: 3,
     height: 2,
     color: '#F5C518',
+    powerConsumption: 0, // Generators don't consume power
     ports: [
       { type: 'input', offsetX: 0, offsetY: 0, direction: 'W' },
     ],
@@ -279,4 +303,5 @@ export const initializeSampleData = (store: {
 }): void => {
   sampleMachineDefs.forEach((def) => store.addMachineDef(def));
   sampleRecipes.forEach((recipe) => store.addRecipe(recipe));
+  store.addMachineDef(PYLON_DEF);
 };
